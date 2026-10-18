@@ -5,686 +5,342 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FEEDS_DIR = path.resolve(__dirname, '../public/feeds');
 
-function isoWithOffsetHours(offsetHours, baseDate = new Date()) {
-  return new Date(baseDate.getTime() + offsetHours * 3600 * 1000).toISOString();
+const LOCALHUB_CITIES = {
+  turku: {
+    cityId: 'turku',
+    cityName: 'Turku',
+    siteId: '64eb1340b3df576fc965b8a7',
+    backend: 'https://kalenteri.turku.fi/api',
+    frontend: 'https://kalenteri.turku.fi',
+    s3Base: 'https://localhub-oy.s3.eu-central-1.amazonaws.com/images',
+    defaultCoords: [22.2666, 60.4518],
+    maxEvents: 450,
+  },
+  tampere: {
+    cityId: 'tampere',
+    cityName: 'Tampere',
+    siteId: '634844c32f41a024ee51a234',
+    backend: 'https://tapahtumat.tampere.fi/api',
+    frontend: 'https://tapahtumat.tampere.fi',
+    s3Base: 'https://cdn.townbase.com/images',
+    defaultCoords: [23.7610, 61.4978],
+    maxEvents: 450,
+  },
+  oulu: {
+    cityId: 'oulu',
+    cityName: 'Oulu',
+    siteId: '5dc549a38925dd23b5949a4d',
+    backend: 'https://tapahtumat.munoulu.fi/api',
+    frontend: 'https://tapahtumat.munoulu.fi',
+    s3Base: 'https://localhub-oy.s3.eu-central-1.amazonaws.com/images',
+    defaultCoords: [25.4651, 65.0121],
+    maxEvents: 450,
+  },
+};
+
+function parseVenueAndAddress(rawAddress, cityName) {
+  if (!rawAddress || typeof rawAddress !== 'string') {
+    return { venueName: `${cityName} Tapahtumapaikka`, streetAddress: cityName };
+  }
+  const parts = rawAddress
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 3) {
+    return {
+      venueName: parts[0],
+      streetAddress: parts.slice(1).join(', '),
+    };
+  }
+  if (parts.length === 2) {
+    // e.g. "Kristiinankatu 5, 20100 Turku" vs "Logomo, Junakatu 9"
+    const firstHasDigits = /\d/.test(parts[0]);
+    return {
+      venueName: firstHasDigits ? parts[0] : parts[0],
+      streetAddress: parts.join(', '),
+    };
+  }
+  return {
+    venueName: parts[0] || cityName,
+    streetAddress: rawAddress,
+  };
 }
 
-function buildLinkedEvent({
-  id,
-  cityId,
-  titleFi,
-  titleEn,
-  shortFi,
-  shortEn,
-  descEn,
-  venueId,
-  venueNameFi,
-  venueNameEn,
-  streetAddress,
-  postalCode,
-  coordinates,
-  keywords,
-  imageUrl,
-  photographer,
-  license = 'cc_by',
-  provider,
-  isFree,
-  price,
-  infoUrl,
-  offsetHours,
-  durationHours,
-  dayOffset = 0,
-}) {
+function convertLocalhubPageToLinkedEvent(page, cfg, index) {
   const now = new Date();
-  const totalOffsetHours = dayOffset * 24 + offsetHours;
-  const startTime = isoWithOffsetHours(totalOffsetHours, now);
-  const endTime = isoWithOffsetHours(totalOffsetHours + durationHours, now);
+  const loc = Array.isArray(page.locations) && page.locations[0] ? page.locations[0] : null;
+  const rawAddress =
+    loc?.alt?.fi?.address ||
+    loc?.address ||
+    cfg.cityName;
+
+  const { venueName, streetAddress } = parseVenueAndAddress(rawAddress, cfg.cityName);
+
+  let coordinates = cfg.defaultCoords;
+  if (loc && Number.isFinite(loc.lng) && Number.isFinite(loc.lat)) {
+    coordinates = [Number(loc.lng.toFixed(6)), Number(loc.lat.toFixed(6))];
+  } else {
+    // Slight deterministic offset around city center for virtual/unmapped events
+    const angle = (index * 137.5 * Math.PI) / 180;
+    const r = 0.003 + (index % 7) * 0.002;
+    coordinates = [
+      Number((cfg.defaultCoords[0] + Math.cos(angle) * r * 1.8).toFixed(6)),
+      Number((cfg.defaultCoords[1] + Math.sin(angle) * r).toFixed(6)),
+    ];
+  }
+
+  // Extract upcoming individual dates
+  const rawDates = Array.isArray(page.event?.dates) ? page.event.dates : [];
+  const validDates = rawDates
+    .filter((d) => d && d.start && !d.isCancelled)
+    .map((d) => ({
+      start: d.start,
+      end: d.end || new Date(new Date(d.start).getTime() + 2.5 * 3600 * 1000).toISOString(),
+      urlPurchaseTicket: d.urlPurchaseTicket || d.urlSignUp || null,
+    }));
+
+  // Pick the current or next upcoming occurrence (or fallback to defaultStartDate)
+  let chosenSlot =
+    validDates.find((d) => new Date(d.end) >= now) ||
+    validDates[0] || {
+      start: page.defaultStartDate || page.event?.start || now.toISOString(),
+      end:
+        page.defaultEndDate ||
+        page.event?.end ||
+        new Date(now.getTime() + 3 * 3600 * 1000).toISOString(),
+      urlPurchaseTicket: null,
+    };
+
+  const imageHash = page.imageMobile || page.imageDesktop || page.imageList || null;
+  const imageUrl = imageHash ? `${cfg.s3Base}/${imageHash}` : null;
+
+  const ticketUrl =
+    chosenSlot.urlPurchaseTicket ||
+    page.event?.urlPurchaseTicket ||
+    page.event?.urlSignUp ||
+    page.links?.[0]?.url ||
+    `${cfg.frontend}/fi-FI/page/${page._id}`;
+
+  const categories = Array.isArray(page.globalContentCategories)
+    ? page.globalContentCategories
+    : [];
+
+  const isFree = !page.hasPrice;
+  const providerName =
+    page.ownerName || page.sourceNameExternal || page.sourceName || `${cfg.cityName} Tapahtumakalenteri`;
+
+  const shortText =
+    (page.descriptionShort || '').trim() ||
+    (page.name || '').trim();
+
+  const longHtml =
+    (page.descriptionLong || '').trim() ||
+    `<p>${shortText}</p>`;
 
   return {
-    id,
-    '@id': `https://api.hel.fi/linkedevents/v1/event/${id}/`,
-    '@context': 'http://schema.org',
+    id: `${cfg.cityId}:${page._id}`,
     '@type': 'Event/LinkedEvent',
-    event_status: 'EventScheduled',
-    data_source: cityId,
-    publisher: `6aika:${cityId}`,
-    _demo_offset_hours: offsetHours,
-    _demo_duration_hours: durationHours,
-    _demo_day_offset: dayOffset,
+    data_source: cfg.cityId,
+    publisher: providerName,
     name: {
-      fi: titleFi,
-      en: titleEn,
+      fi: page.name || 'Tapahtuma',
+      en: page.name || 'Event',
     },
     short_description: {
-      fi: shortFi,
-      en: shortEn,
+      fi: shortText,
+      en: shortText,
     },
     description: {
-      fi: `<p>${shortFi}</p><p>${descEn}</p>`,
-      en: `<p>${shortEn}</p><p>${descEn}</p>`,
+      fi: longHtml,
+      en: longHtml,
     },
-    start_time: startTime,
-    end_time: endTime,
+    start_time: chosenSlot.start,
+    end_time: chosenSlot.end,
+    occurrence_dates: validDates.slice(0, 40).map((d) => ({
+      start: d.start,
+      end: d.end,
+    })),
     provider: {
-      fi: provider,
-      en: provider,
+      fi: providerName,
+      en: providerName,
     },
     info_url: {
-      fi: infoUrl,
-      en: infoUrl,
+      fi: ticketUrl,
+      en: ticketUrl,
     },
     offers: [
       {
         is_free: isFree,
-        price: isFree ? null : { fi: price, en: price },
-        description: {
-          fi: isFree ? 'Vapaa pääsy' : 'Liput ennakkoon tai ovelta',
-          en: isFree ? 'Free admission' : 'Tickets online or at the door',
-        },
-        info_url: { fi: infoUrl, en: infoUrl },
+        price: isFree ? null : { fi: 'Katso liput', en: 'See tickets' },
+        info_url: { fi: ticketUrl, en: ticketUrl },
       },
     ],
     location: {
-      id: venueId,
-      '@id': `https://api.hel.fi/linkedevents/v1/place/${venueId}/`,
-      '@context': 'http://schema.org',
-      '@type': 'Place',
-      data_source: cityId,
+      id: `${cfg.cityId}:loc-${coordinates[0].toFixed(4)}-${coordinates[1].toFixed(4)}`,
       name: {
-        fi: venueNameFi,
-        en: venueNameEn,
+        fi: venueName,
+        en: venueName,
       },
       street_address: {
         fi: streetAddress,
         en: streetAddress,
       },
       address_locality: {
-        fi: cityId.charAt(0).toUpperCase() + cityId.slice(1),
-        en: cityId.charAt(0).toUpperCase() + cityId.slice(1),
+        fi: cfg.cityName,
+        en: cfg.cityName,
       },
-      postal_code: postalCode,
       position: {
         type: 'Point',
         coordinates,
       },
-      divisions: [
-        {
-          type: 'muni',
-          ocd_id: `ocd-division/country:fi/kunta:${cityId}`,
-          municipality: cityId,
-          name: {
-            fi: cityId.charAt(0).toUpperCase() + cityId.slice(1),
-            en: cityId.charAt(0).toUpperCase() + cityId.slice(1),
-          },
-        },
-      ],
     },
-    keywords: keywords.map((kw, idx) => ({
-      id: `yso:${cityId}-${idx}`,
-      '@type': 'Keyword',
-      name: { fi: kw, en: kw },
+    keywords: categories.map((cat) => ({
+      id: `cat:${cat.toLowerCase()}`,
+      name: { fi: cat, en: cat },
     })),
-    images: [
-      {
-        id: `${id}-img`,
-        url: imageUrl,
-        name: `${id}.jpg`,
-        photographer_name: photographer,
-        alt_text: titleEn,
-        license,
-        data_source: cityId,
-        '@type': 'ImageObject',
-      },
-    ],
+    images: imageUrl
+      ? [
+          {
+            id: `${page._id}-img`,
+            url: imageUrl,
+            photographer_name: providerName,
+            alt_text: page.name || cfg.cityName,
+            license: 'event_only',
+            data_source: `${cfg.cityName} Tapahtumakalenteri`,
+          },
+        ]
+      : [],
   };
 }
 
-const BASE_CITY_TEMPLATES = {
-  turku: [
-    {
-      id: 'turku:logomo-aurora-sessions',
-      cityId: 'turku',
-      titleFi: 'Logomo Electronic & Visual Night: Aurora Synth',
-      titleEn: 'Logomo Electronic & Visual Night: Aurora Synth',
-      shortFi: 'Pohjoismainen elektronisen musiikin ja valotaiteen ilta Logomon salissa.',
-      shortEn: 'Immersive Nordic electronic music, spatial audio, and laser projection show at Logomo.',
-      descEn: 'Experience spatial 360° soundscapes and live modular synth performances inside Logomo Hall with visual artists from across the Baltic Sea region.',
-      venueId: 'turku:place-logomo',
-      venueNameFi: 'Logomo',
-      venueNameEn: 'Logomo Cultural Hub',
-      streetAddress: 'Junakatu 9',
-      postalCode: '20100',
-      coordinates: [22.2569, 60.4557],
-      keywords: ['music', 'concert', 'electronic', 'nightlife'],
-      imageUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Aino Lindholm / Logomo Media',
-      license: 'event_only',
-      provider: 'Logomo Oy',
-      isFree: false,
-      price: '24 €',
-      infoUrl: 'https://logomo.fi',
-      offsetHours: -0.5,
-      durationHours: 4,
-      dayOffset: 0,
-    },
-    {
-      id: 'turku:logomo-design-pop',
-      cityId: 'turku',
-      titleFi: 'Archipelago Creative Tech & Design Expo',
-      titleEn: 'Archipelago Creative Tech & Design Expo',
-      shortFi: 'Pelinkehittäjien, muotoilijoiden ja digitaalisen taiteen avoin demopäivä Logomossa.',
-      shortEn: 'Interactive demos from Turku game studios, sound designers, and creative technologists.',
-      descEn: 'Try hands-on prototypes, VR installations, and sustainable Nordic product design in the Logomo Byrå atrium.',
-      venueId: 'turku:place-logomo',
-      venueNameFi: 'Logomo',
-      venueNameEn: 'Logomo Cultural Hub',
-      streetAddress: 'Junakatu 9',
-      postalCode: '20100',
-      coordinates: [22.2569, 60.4557],
-      keywords: ['culture', 'exhibition', 'design'],
-      imageUrl: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Mikko Rantanen / Turku Science Park',
-      license: 'cc_by',
-      provider: 'Turku Business Region',
-      isFree: true,
-      price: '0 €',
-      infoUrl: 'https://logomo.fi',
-      offsetHours: 1.5,
-      durationHours: 3.5,
-      dayOffset: 0,
-    },
-    {
-      id: 'turku:teatteri-riverfront-gala',
-      cityId: 'turku',
-      titleFi: 'Turun Kaupunginteatteri: Aurajoen Yö -ensi-ilta',
-      titleEn: 'Turku City Theatre: Night on the Aura River Premiere',
-      shortFi: 'Moderni musiikkiteatteriteos Aurajoen rannalla upein valolavastuksin.',
-      shortEn: 'Contemporary musical drama staged on the banks of the Aura River with live orchestra.',
-      descEn: 'Turun kaupunginteatteri presents an original waterfront production blending contemporary choreography, orchestral score, and archival city projections.',
-      venueId: 'turku:place-kaupunginteatteri',
-      venueNameFi: 'Turun kaupunginteatteri',
-      venueNameEn: 'Turku City Theatre',
-      streetAddress: 'Itäinen Rantakatu 14',
-      postalCode: '20800',
-      coordinates: [22.2662, 60.4465],
-      keywords: ['theatre', 'culture', 'music'],
-      imageUrl: 'https://images.unsplash.com/photo-1503095396549-807759245b35?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Otto-Ville Väätäinen / Turun kaupunginteatteri',
-      license: 'event_only',
-      provider: 'Turun Kaupunginteatteri',
-      isFree: false,
-      price: '36 €',
-      infoUrl: 'https://tkteatteri.fi',
-      offsetHours: -0.25,
-      durationHours: 3,
-      dayOffset: 0,
-    },
-    {
-      id: 'turku:kirjasto-jazz-courtyard',
-      cityId: 'turku',
-      titleFi: 'Pääkirjaston Valopiha Acoustic & Poetry Jam',
-      titleEn: 'Main Library Courtyard Acoustic & Poetry Jam',
-      shortFi: 'Ilmainen akustinen konsertti ja lavarunousilta Turun pääkirjaston sisäpihalla.',
-      shortEn: 'Free evening of Nordic acoustic jazz and multilingual spoken word in the library courtyard.',
-      descEn: 'Grab a coffee at Café Sirius and enjoy live upright bass, vibraphone, and poetry performances at Turun pääkirjasto.',
-      venueId: 'turku:place-paakirjasto',
-      venueNameFi: 'Turun pääkirjasto',
-      venueNameEn: 'Turku Main Library',
-      streetAddress: 'Linnankatu 2',
-      postalCode: '20100',
-      coordinates: [22.2709, 60.4505],
-      keywords: ['culture', 'music', 'literature'],
-      imageUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Sanna Korhonen / Turun kaupunki',
-      license: 'cc_by',
-      provider: 'Turun kaupunginkirjasto',
-      isFree: true,
-      price: '0 €',
-      infoUrl: 'https://www.turku.fi/kirjasto',
-      offsetHours: -1.0,
-      durationHours: 2.5,
-      dayOffset: 0,
-    },
-    {
-      id: 'turku:kupittaa-sunset-run',
-      cityId: 'turku',
-      titleFi: 'Kupittaanpuisto Neon Night Run & Park Yoga',
-      titleEn: 'Kupittaanpuisto Neon Night Run & Park Yoga',
-      shortFi: 'Yhteisöllinen 5 km iltalenkki, DJ-piste ja palauttava puistojooga Kupittaalla.',
-      shortEn: 'Community 5K twilight social run with LED wristbands, live DJ pace-car, and recovery stretch.',
-      descEn: 'Meet by the Kupittaa Pavilion for a friendly all-paces 5K loop around Finland’s oldest urban park followed by warm berry juice and mobility flow.',
-      venueId: 'turku:place-kupittaanpuisto',
-      venueNameFi: 'Kupittaanpuisto',
-      venueNameEn: 'Kupittaa Park Pavilion',
-      streetAddress: 'Kupittaankatu 2',
-      postalCode: '20520',
-      coordinates: [22.2925, 60.4448],
-      keywords: ['sports', 'exercise', 'nature', 'outdoors'],
-      imageUrl: 'https://images.unsplash.com/photo-1552674605-db6ffd4facb5?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Joonas Mäkinen / Liikuntapalvelut',
-      license: 'cc_by',
-      provider: 'Turun liikuntapalvelut',
-      isFree: true,
-      price: '0 €',
-      infoUrl: 'https://www.turku.fi/liikunta',
-      offsetHours: 0.25,
-      durationHours: 2.5,
-      dayOffset: 0,
-    },
-    {
-      id: 'turku:kupittaa-family-adventure',
-      cityId: 'turku',
-      titleFi: 'Seikkailupuiston Valoseikkailu Perheille',
-      titleEn: 'Adventure Park Lantern Quest for Families',
-      shortFi: 'Koko perheen elämyksellinen lyhtyseikkailu ja musiikkityöpaja Kupittaan Seikkailupuistossa.',
-      shortEn: 'Interactive lantern trail, puppet theatre, and outdoor rhythm workshop for children and families.',
-      descEn: 'Explore illuminated treehouse stations, craft recycled paper lanterns, and join the family sing-along in Seikkailupuisto.',
-      venueId: 'turku:place-kupittaanpuisto',
-      venueNameFi: 'Kupittaanpuisto',
-      venueNameEn: 'Kupittaa Park Pavilion',
-      streetAddress: 'Kupittaankatu 2',
-      postalCode: '20520',
-      coordinates: [22.2925, 60.4448],
-      keywords: ['family', 'children', 'culture'],
-      imageUrl: 'https://images.unsplash.com/photo-1472653431158-6364773b2a56?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Laura Niemi / Seikkailupuisto',
-      license: 'cc_by',
-      provider: 'Seikkailupuisto Turku',
-      isFree: true,
-      price: '0 €',
-      infoUrl: 'https://www.turku.fi/seikkailupuisto',
-      offsetHours: 2.0,
-      durationHours: 4,
-      dayOffset: 1,
-    },
-    {
-      id: 'turku:aurajoki-street-food',
-      cityId: 'turku',
-      titleFi: 'Aurajoen Yömarkkinat & Saaristolaisruokajuhla',
-      titleEn: 'Aura River Night Market & Archipelago Street Food',
-      shortFi: 'Lähiruokaa, saaristolaisannoksia ja elävää musiikkia Förin ja Tuomiokirkon välillä.',
-      shortEn: 'Artisanal archipelago street food, smoked fish, craft mocktails, and riverboat DJ sets.',
-      descEn: 'Over 25 local Archipelago producers and street kitchens line the historic Aura River promenade with glowing lantern boats.',
-      venueId: 'turku:place-aurariver',
-      venueNameFi: 'Aurajoen ranta (Vähätori)',
-      venueNameEn: 'Aura River Promenade (Vähätori)',
-      streetAddress: 'Linnankatu 3',
-      postalCode: '20100',
-      coordinates: [22.2701, 60.4514],
-      keywords: ['food', 'market', 'music', 'nightlife'],
-      imageUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Henrik Lindqvist / Visit Turku Archipelago',
-      license: 'event_only',
-      provider: 'Turku Food & Wine Collective',
-      isFree: true,
-      price: '0 €',
-      infoUrl: 'https://visitturku.fi',
-      offsetHours: -0.75,
-      durationHours: 4.5,
-      dayOffset: 0,
-    },
-  ],
-
-  tampere: [
-    {
-      id: 'tampere:nokia-arena-hockey-showdown',
-      cityId: 'tampere',
-      titleFi: 'Nokia Arena Live: Liiga-huippuottelu & Valoshow',
-      titleEn: 'Nokia Arena Live: Ice Hockey Derby & LED Pregame Show',
-      shortFi: 'Täyden areenan kiekkojuhla, 360° jääprojektiot ja live-DJ Nokia Arenalla.',
-      shortEn: 'Electric Tampere ice hockey atmosphere with 360° on-ice projection mapping and live arena entertainment.',
-      descEn: 'Experience Europe’s most modern indoor arena right on top of the Tampere railway deck with a high-energy pregame light spectacle.',
-      venueId: 'tampere:place-nokia-arena',
-      venueNameFi: 'Nokia Arena',
-      venueNameEn: 'Nokia Arena',
-      streetAddress: 'Kansikatu 3',
-      postalCode: '33100',
-      coordinates: [23.7739, 61.4936],
-      keywords: ['sports', 'ice hockey', 'entertainment'],
-      imageUrl: 'https://images.unsplash.com/photo-1515703407324-5f753afd8be8?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Tomi Vuorinen / Nokia Arena Media',
-      license: 'event_only',
-      provider: 'Nokia Arena Tampere',
-      isFree: false,
-      price: '29 €',
-      infoUrl: 'https://nokiaarena.fi',
-      offsetHours: -0.5,
-      durationHours: 3.5,
-      dayOffset: 0,
-    },
-    {
-      id: 'tampere:nokia-arena-afterglow',
-      cityId: 'tampere',
-      titleFi: 'Arena Rooftop Lounge & Indie Club Night',
-      titleEn: 'Arena Rooftop Lounge & Indie Club Night',
-      shortFi: 'Ottelun jälkeinen kattoterassiklubi ja tamperelaiset indie-DJ:t.',
-      shortEn: 'Post-event skyline DJ sets and live synth-pop bands overlooking central Tampere.',
-      descEn: 'Step into the Eventum Lounge at Nokia Arena for panoramic city lights, local craft beverages, and live electronic-indie acts.',
-      venueId: 'tampere:place-nokia-arena',
-      venueNameFi: 'Nokia Arena',
-      venueNameEn: 'Nokia Arena',
-      streetAddress: 'Kansikatu 3',
-      postalCode: '33100',
-      coordinates: [23.7739, 61.4936],
-      keywords: ['nightlife', 'music', 'club'],
-      imageUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Eero Salminen / Arena Events',
-      license: 'event_only',
-      provider: 'Nokia Arena Tampere',
-      isFree: false,
-      price: '15 €',
-      infoUrl: 'https://nokiaarena.fi',
-      offsetHours: 2.0,
-      durationHours: 4.0,
-      dayOffset: 0,
-    },
-    {
-      id: 'tampere:tamperetalo-symphony-cinema',
-      cityId: 'tampere',
-      titleFi: 'Tampere-talo: Pelimusiikin Sinfonia & Valokonsertti',
-      titleEn: 'Tampere Hall: Nordic Game Music Symphony in Concert',
-      shortFi: 'Tampere Filharmonia esittää ikonista pohjoismaista peli- ja elokuvamusiikkia Iso-salissa.',
-      shortEn: 'Tampere Philharmonic Orchestra performs iconic Nordic video game and cinema scores live.',
-      descEn: 'An unforgettable symphonic evening at Tampere-talo featuring an 85-piece orchestra, choir, and synchronized stage visuals.',
-      venueId: 'tampere:place-tamperetalo',
-      venueNameFi: 'Tampere-talo',
-      venueNameEn: 'Tampere Hall (Tampere-talo)',
-      streetAddress: 'Yliopistonkatu 55',
-      postalCode: '33100',
-      coordinates: [23.7817, 61.4957],
-      keywords: ['music', 'concert', 'culture'],
-      imageUrl: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Petri Kangas / Tampere-talo',
-      license: 'event_only',
-      provider: 'Tampere-talo Oy',
-      isFree: false,
-      price: '39 €',
-      infoUrl: 'https://tampere-talo.fi',
-      offsetHours: -0.25,
-      durationHours: 3.0,
-      dayOffset: 0,
-    },
-    {
-      id: 'tampere:tamperetalo-moomin-atelier',
-      cityId: 'tampere',
-      titleFi: 'Muumimuseon Iltatyöpaja: Tove Janssonin Viiva ja Valo',
-      titleEn: 'Moomin Museum Evening Atelier: Line & Shadow Workshop',
-      shortFi: 'Ohjattu kuvitustyöpaja ja iltaopastus Muumimuseossa Tampere-talossa.',
-      shortEn: 'Guided scratchboard illustration workshop and evening curator tour at the Moomin Museum.',
-      descEn: 'Try Tove Jansson’s classic ink and scratchboard techniques with museum educators and explore the original Moominvalley tableaux.',
-      venueId: 'tampere:place-tamperetalo',
-      venueNameFi: 'Tampere-talo',
-      venueNameEn: 'Tampere Hall (Tampere-talo)',
-      streetAddress: 'Yliopistonkatu 55',
-      postalCode: '33100',
-      coordinates: [23.7817, 61.4957],
-      keywords: ['family', 'culture', 'art'],
-      imageUrl: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Roosa Kallio / Muumimuseo',
-      license: 'cc_by',
-      provider: 'Muumimuseo • Tampereen taidemuseo',
-      isFree: false,
-      price: '14,50 €',
-      infoUrl: 'https://muumimuseo.fi',
-      offsetHours: 1.0,
-      durationHours: 3.5,
-      dayOffset: 1,
-    },
-    {
-      id: 'tampere:metso-architecture-talk',
-      cityId: 'tampere',
-      titleFi: 'Pääkirjasto Metso: Raili & Reima Pietilän Arkkitehtuuri-ilta + Vinyl Lounge',
-      titleEn: 'Main Library Metso: Nordic Organic Architecture Talk & Vinyl Set',
-      shortFi: 'Arkkitehtuurikierros ja vinyylilevyjen kuunteluilta ikonisessa Pääkirjasto Metsossa.',
-      shortEn: 'Guided architectural tour of Pietilä’s iconic capercaillie-shaped library followed by ambient vinyl sessions.',
-      descEn: 'Discover the soaring copper domes and boulder-cut skylights of Pääkirjasto Metso while music librarians spin rare Finnish jazz and ambient records.',
-      venueId: 'tampere:place-metso',
-      venueNameFi: 'Pääkirjasto Metso',
-      venueNameEn: 'Main Library Metso',
-      streetAddress: 'Pirkankatu 2',
-      postalCode: '33210',
-      coordinates: [23.7506, 61.4979],
-      keywords: ['culture', 'architecture', 'music'],
-      imageUrl: 'https://images.unsplash.com/photo-1507842229356-51c61504d3ab?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Kalle Virtanen / Tampereen kaupunginkirjasto',
-      license: 'cc_by',
-      provider: 'Tampereen kaupunginkirjasto',
-      isFree: true,
-      price: '0 €',
-      infoUrl: 'https://www.tampere.fi/kirjastot',
-      offsetHours: -0.8,
-      durationHours: 2.5,
-      dayOffset: 0,
-    },
-    {
-      id: 'tampere:keskustori-light-market',
-      cityId: 'tampere',
-      titleFi: 'Keskustorin Valogalleria & Tammerkosken Street Food',
-      titleEn: 'Keskustori Light Gallery & Tammerkoski Night Bites',
-      shortFi: 'Keskustorin historialliset julkisivut heräävät eloon valotaiteella ja katuruokakojuilla.',
-      shortEn: 'Projection mapping across historic Keskustori facades paired with artisan street food stalls.',
-      descEn: 'Stroll from Keskustori to the Tammerkoski rapids while interactive light installations illuminate Raatihuone and Vanha kirkko.',
-      venueId: 'tampere:place-keskustori',
-      venueNameFi: 'Keskustori',
-      venueNameEn: 'Keskustori Central Square',
-      streetAddress: 'Keskustori 1',
-      postalCode: '33100',
-      coordinates: [23.7609, 61.4981],
-      keywords: ['food', 'culture', 'nightlife'],
-      imageUrl: 'https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Aleksi Koskinen / Visit Tampere',
-      license: 'cc_by',
-      provider: 'Tampereen kaupunki • Tapahtumapalvelut',
-      isFree: true,
-      price: '0 €',
-      infoUrl: 'https://visittampere.fi',
-      offsetHours: -0.4,
-      durationHours: 4.5,
-      dayOffset: 0,
-    },
-  ],
-
-  oulu: [
-    {
-      id: 'oulu:teatteri-northern-opera',
-      cityId: 'oulu',
-      titleFi: 'Oulun Teatteri: Pohjoisen Taivaan Alla -näytös',
-      titleEn: 'Oulu Theatre: Under the Northern Sky Stage Premiere',
-      shortFi: 'Visuaalisesti vaikuttava nykyteatteriteos Oulun teatterin suurella näyttämöllä.',
-      shortEn: 'Striking contemporary stage production on Oulu’s iconic waterfront island theatre.',
-      descEn: 'Overlooking the Pikisaari estuary, Oulun teatteri combines live Arctic folk-electronica with dramatic stagecraft in the Grand Stage.',
-      venueId: 'oulu:place-oulunteatteri',
-      venueNameFi: 'Oulun teatteri',
-      venueNameEn: 'Oulu City Theatre',
-      streetAddress: 'Kaarlenväylä 2',
-      postalCode: '90100',
-      coordinates: [25.4624, 65.0139],
-      keywords: ['theatre', 'culture', 'music'],
-      imageUrl: 'https://images.unsplash.com/photo-1507676184212-d03ab07a01bf?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Kati Leinonen / Oulun teatteri',
-      license: 'event_only',
-      provider: 'Oulun teatteri Oy',
-      isFree: false,
-      price: '32 €',
-      infoUrl: 'https://teatteri.ouka.fi',
-      offsetHours: -0.5,
-      durationHours: 3.0,
-      dayOffset: 0,
-    },
-    {
-      id: 'oulu:valve-indie-film-and-beats',
-      cityId: 'oulu',
-      titleFi: 'Kulttuuritalo Valve: Arctic Lens -lyhytelokuvailta & DJ-klubi',
-      titleEn: 'Cultural Centre Valve: Arctic Lens Short Film Night & Live Beats',
-      shortFi: 'Pohjoisen elokuvantekijöiden lyhytelokuvia Studio-salissa ja keskustelua Valven Paljetissa.',
-      shortEn: 'Northern cinema showcase at Studio Valve followed by lo-fi vinyl sets and filmmaker Q&A.',
-      descEn: 'Discover bold new short films from Oulu2026 European Capital of Culture creators inside historic Kulttuuritalo Valve.',
-      venueId: 'oulu:place-valve',
-      venueNameFi: 'Kulttuuritalo Valve',
-      venueNameEn: 'Cultural Centre Valve',
-      streetAddress: 'Hallituskatu 7',
-      postalCode: '90100',
-      coordinates: [25.4713, 65.0136],
-      keywords: ['culture', 'film', 'music'],
-      imageUrl: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Harri Hemmilä / Kulttuuritalo Valve',
-      license: 'cc_by',
-      provider: 'Kulttuuritalo Valve • Oulu2026',
-      isFree: true,
-      price: '0 €',
-      infoUrl: 'https://www.kulttuurivalve.fi',
-      offsetHours: -0.75,
-      durationHours: 3.5,
-      dayOffset: 0,
-    },
-    {
-      id: 'oulu:valve-air-guitar-workshop',
-      cityId: 'oulu',
-      titleFi: 'Ilmakitaran ja Lavakarismatyöpaja @ Valve',
-      titleEn: 'Oulu Air Guitar & Stage Presence Open Jam',
-      shortFi: 'Oululaisen ilmakitaraperinteen hengessä järjestettävä hauska esiintymistyöpaja.',
-      shortEn: 'High-energy stage charisma and air guitar jam inspired by Oulu’s world-famous festival.',
-      descEn: 'Warm up your invisible fretboard with past finalists and local musicians in a joyful, zero-barrier evening session.',
-      venueId: 'oulu:place-valve',
-      venueNameFi: 'Kulttuuritalo Valve',
-      venueNameEn: 'Cultural Centre Valve',
-      streetAddress: 'Hallituskatu 7',
-      postalCode: '90100',
-      coordinates: [25.4713, 65.0136],
-      keywords: ['music', 'nightlife', 'culture'],
-      imageUrl: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Juha Tuominen / Oulu Cultural Events',
-      license: 'cc_by',
-      provider: 'Kulttuuritalo Valve',
-      isFree: true,
-      price: '0 €',
-      infoUrl: 'https://www.kulttuurivalve.fi',
-      offsetHours: 1.5,
-      durationHours: 2.5,
-      dayOffset: 0,
-    },
-    {
-      id: 'oulu:ouluhalli-arctic-futsal-climb',
-      cityId: 'oulu',
-      titleFi: 'Ouluhalli Action Night: Yökiipeily & Arctic Street Hoops',
-      titleEn: 'Ouluhalli Action Night: Bouldering Jam & 3x3 Street Hoops',
-      shortFi: 'Avoin iltavuoro Ouluhallin uudella puolella: kiipeilyseinä, 3x3-koristurnaus ja musiikkia.',
-      shortEn: 'Late-evening community sports jam with bouldering routes, 3x3 basketball, and live DJ.',
-      descEn: 'Test new climbing problems and join pick-up 3x3 games under Ouluhalli’s iconic wooden dome.',
-      venueId: 'oulu:place-ouluhalli',
-      venueNameFi: 'Ouluhalli',
-      venueNameEn: 'Ouluhalli Arena',
-      streetAddress: 'Ouluhallintie 20',
-      postalCode: '90130',
-      coordinates: [25.4998, 65.0046],
-      keywords: ['sports', 'exercise', 'youth'],
-      imageUrl: 'https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Matti Niemelä / Oulun liikuntapalvelut',
-      license: 'cc_by',
-      provider: 'Oulun kaupungin liikuntapalvelut',
-      isFree: false,
-      price: '6 €',
-      infoUrl: 'https://www.ouka.fi/ouluhalli',
-      offsetHours: -0.25,
-      durationHours: 3.0,
-      dayOffset: 0,
-    },
-    {
-      id: 'oulu:nallikari-aurora-bonfire',
-      cityId: 'oulu',
-      titleFi: 'Nallikarin Majakka: Revontulivaellus & Rantatulistelut',
-      titleEn: 'Nallikari Lighthouse: Coastal Aurora Walk & Beachside Fire Pit',
-      shortFi: 'Ohjattu iltakävely Nallikarin majakalle, tähtitaivaan valokuvausta ja lämmintä glögiä.',
-      shortEn: 'Guided twilight walk along Nallikari beach to the lighthouse with night-sky photography tips.',
-      descEn: 'Gather by the Bothnian Bay shoreline for coastal storytelling, roasted campfire snacks, and aurora borealis skywatching.',
-      venueId: 'oulu:place-nallikari',
-      venueNameFi: 'Nallikari (Majakka)',
-      venueNameEn: 'Nallikari Beach & Lighthouse',
-      streetAddress: 'Nallikarinranta 15',
-      postalCode: '90510',
-      coordinates: [25.4117, 65.0315],
-      keywords: ['nature', 'outdoors', 'family', 'food'],
-      imageUrl: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?auto=format&fit=crop&w=1080&q=80',
-      photographer: 'Sami Kärkkäinen / Visit Oulu',
-      license: 'event_only',
-      provider: 'Visit Oulu • Nallikari Safaris',
-      isFree: true,
-      price: '0 €',
-      infoUrl: 'https://nallikari.fi',
-      offsetHours: -0.6,
-      durationHours: 3.5,
-      dayOffset: 0,
-    },
-  ],
-};
-
-function expandMultiDaySchedule(templates) {
-  const expanded = [];
-  // Include today's core events (dayOffset = 0 / 1) plus recurring sessions across the next 21 days
-  for (const tpl of templates) {
-    expanded.push(buildLinkedEvent(tpl));
+async function syncLocalhubCity(cfg) {
+  const url = `${cfg.backend}/collection/${cfg.siteId}/content?lang=fi&country=FI&mode=event&sort=startDate`;
+  console.log(`[sync-feeds] Fetching ${cfg.cityName} calendar from ${url}...`);
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} for ${cfg.cityName}`);
   }
+  const json = await res.json();
+  const pages = Array.isArray(json.pages) ? json.pages : [];
+  const sliced = pages.slice(0, cfg.maxEvents);
+  const converted = sliced.map((p, idx) =>
+    convertLocalhubPageToLinkedEvent(p, cfg, idx)
+  );
 
-  const futureDayOffsets = [1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 15, 18, 21];
-  futureDayOffsets.forEach((dayOffset, dIdx) => {
-    const subset = templates.filter((_, idx) => (idx + dIdx) % 2 === 0);
-    for (const tpl of subset) {
-      expanded.push(
-        buildLinkedEvent({
-          ...tpl,
-          id: `${tpl.id}-day-${dayOffset}`,
-          dayOffset,
-          offsetHours: ((dIdx % 3) - 1) * 2,
-        })
-      );
-    }
-  });
+  const payload = {
+    meta: {
+      count: converted.length,
+      total_upstream: pages.length,
+      next: null,
+      previous: null,
+      generated_at: new Date().toISOString(),
+      source_calendar: cfg.frontend,
+    },
+    data: converted,
+  };
 
-  return expanded;
+  const outPath = path.join(FEEDS_DIR, `${cfg.cityId}.json`);
+  await fs.writeFile(outPath, JSON.stringify(payload), 'utf8');
+  console.log(
+    `[sync-feeds] ✓ ${cfg.cityName}: Saved ${converted.length} real events (from ${pages.length} upstream) -> public/feeds/${cfg.cityId}.json`
+  );
 }
 
-async function fetchCapitalFallback(cityId) {
-  const url = `https://api.hel.fi/linkedevents/v1/event/?division=${cityId}&include=location,keywords&start=now&sort=end_time&page_size=40`;
-  try {
-    const res = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    if (Array.isArray(json.data) && json.data.length > 0) {
-      return json;
+function compactCapitalEvent(raw, cityId) {
+  return {
+    id: raw.id,
+    data_source: raw.data_source || cityId,
+    publisher: raw.publisher || cityId,
+    name: raw.name,
+    short_description: raw.short_description,
+    description: raw.description,
+    start_time: raw.start_time,
+    end_time: raw.end_time,
+    provider: raw.provider,
+    info_url: raw.info_url,
+    offers: raw.offers,
+    location: raw.location
+      ? {
+          id: raw.location.id,
+          name: raw.location.name,
+          street_address: raw.location.street_address,
+          address_locality: raw.location.address_locality,
+          position: raw.location.position,
+        }
+      : null,
+    keywords: Array.isArray(raw.keywords)
+      ? raw.keywords.map((k) => ({ id: k.id, name: k.name }))
+      : [],
+    images: Array.isArray(raw.images)
+      ? raw.images.slice(0, 1).map((img) => ({
+          id: img.id,
+          url: img.url,
+          photographer_name: img.photographer_name,
+          alt_text: img.alt_text,
+          license: img.license,
+          data_source: img.data_source,
+        }))
+      : [],
+  };
+}
+
+async function syncCapitalCity(cityId) {
+  const collected = [];
+  const seenIds = new Set();
+  const maxPages = 3; // 3 x 100 = up to 300 real events per Capital Region city
+
+  for (let page = 1; page <= maxPages; page++) {
+    const url = `https://api.hel.fi/linkedevents/v1/event/?division=${cityId}&include=location,keywords&start=now&sort=end_time&page_size=100&page=${page}`;
+    try {
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!res.ok) break;
+      const json = await res.json();
+      if (!Array.isArray(json.data) || json.data.length === 0) break;
+      for (const item of json.data) {
+        if (!seenIds.has(item.id)) {
+          seenIds.add(item.id);
+          collected.push(compactCapitalEvent(item, cityId));
+        }
+      }
+      if (!json.meta?.next) break;
+    } catch (err) {
+      console.warn(`[sync-feeds] Warning fetching page ${page} for ${cityId}:`, err.message);
+      break;
     }
-  } catch (err) {
-    console.warn(`[sync-feeds] Could not fetch live snapshot for ${cityId}:`, err.message);
   }
-  return null;
+
+  if (collected.length > 0) {
+    const outPath = path.join(FEEDS_DIR, `${cityId}.json`);
+    const payload = {
+      meta: {
+        count: collected.length,
+        next: null,
+        previous: null,
+        generated_at: new Date().toISOString(),
+      },
+      data: collected,
+    };
+    await fs.writeFile(outPath, JSON.stringify(payload), 'utf8');
+    console.log(
+      `[sync-feeds] ✓ ${cityId}: Saved ${collected.length} real 6Aika events -> public/feeds/${cityId}.json`
+    );
+  }
 }
 
 async function main() {
   await fs.mkdir(FEEDS_DIR, { recursive: true });
 
-  for (const [cityId, templates] of Object.entries(BASE_CITY_TEMPLATES)) {
-    const events = expandMultiDaySchedule(templates);
-    const payload = {
-      meta: {
-        count: events.length,
-        next: null,
-        previous: null,
-        generated_at: new Date().toISOString(),
-        schema: '6Aika LinkedEvents v1 JSON-LD',
-      },
-      data: events,
-    };
-    const outPath = path.join(FEEDS_DIR, `${cityId}.json`);
-    await fs.writeFile(outPath, JSON.stringify(payload, null, 2), 'utf8');
-    console.log(`[sync-feeds] Wrote ${events.length} multi-day LinkedEvent records -> public/feeds/${cityId}.json`);
+  for (const cfg of Object.values(LOCALHUB_CITIES)) {
+    try {
+      await syncLocalhubCity(cfg);
+    } catch (err) {
+      console.error(`[sync-feeds] Failed to sync ${cfg.cityName}:`, err.message);
+    }
   }
 
   for (const capitalCity of ['helsinki', 'espoo', 'vantaa']) {
-    const liveData = await fetchCapitalFallback(capitalCity);
-    if (liveData) {
-      const outPath = path.join(FEEDS_DIR, `${capitalCity}.json`);
-      await fs.writeFile(outPath, JSON.stringify(liveData, null, 2), 'utf8');
-      console.log(`[sync-feeds] Cached live fallback snapshot (${liveData.data.length} events) -> public/feeds/${capitalCity}.json`);
-    }
+    await syncCapitalCity(capitalCity);
   }
 }
 

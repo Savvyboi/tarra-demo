@@ -16,6 +16,7 @@ import {
   downloadEventIcs,
   parseDateKey,
 } from '../../utils/calendarUtils';
+import { formatDistance } from '../../utils/distanceUtils';
 
 interface DayAgendaDrawerProps {
   isOpen: boolean;
@@ -184,8 +185,11 @@ export const DayAgendaDrawer: React.FC<DayAgendaDrawerProps> = ({
 
                       <p className="mt-0.5 text-xs text-slate-300 flex items-center gap-1 truncate">
                         <MapPin className="w-3 h-3 text-fuchsia-400 shrink-0" />
+                        <span className="font-bold text-cyan-300 shrink-0">
+                          {formatDistance(ev.distanceKm)}
+                        </span>
                         <span className="truncate">
-                          {ev.venueName} • {ev.streetAddress}
+                          • {ev.venueName} • {ev.streetAddress}
                         </span>
                       </p>
                     </button>

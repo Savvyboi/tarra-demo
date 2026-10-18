@@ -16,6 +16,8 @@ import {
   Bookmark,
   Ticket,
   X,
+  Map as MapIcon,
+  LayoutList,
 } from 'lucide-react';
 import { CITIES, CITY_LIST, TOPICS } from './config/cities';
 import {
@@ -25,6 +27,7 @@ import {
   TimeFilter,
   TopicCategory,
   VenueStoryGroup,
+  ViewMode,
 } from './types/linkedEvents';
 import {
   fetchCityEvents,
@@ -36,6 +39,10 @@ import {
   parseDateKey,
 } from './utils/calendarUtils';
 import {
+  calculateDistanceKm,
+  formatDistance,
+} from './utils/distanceUtils';
+import {
   CC_BY_4_URL,
   LINKED_EVENTS_CREDIT_TEXT,
 } from './utils/licenseGuard';
@@ -43,11 +50,13 @@ import { SnapMap } from './components/Map/SnapMap';
 import { StoryPlayerModal } from './components/Story/StoryPlayerModal';
 import { EventCalendarModal } from './components/Calendar/EventCalendarModal';
 import { DayAgendaDrawer } from './components/Agenda/DayAgendaDrawer';
+import { EventListView } from './components/List/EventListView';
 
 const SAVED_EVENTS_STORAGE_KEY = 'snapevents_saved_event_ids_v1';
 
 function parseInitialParams(): {
   city: CityId;
+  view: ViewMode;
   time: TimeFilter;
   date: string | null;
   topic: TopicCategory;
@@ -55,8 +64,11 @@ function parseInitialParams(): {
   eventId: string | null;
 } {
   const params = new URLSearchParams(window.location.search);
-  const rawCity = (params.get('city') || 'helsinki').toLowerCase() as CityId;
+  const rawCity = (params.get('city') || 'turku').toLowerCase() as CityId;
   const city: CityId = rawCity in CITIES ? rawCity : 'helsinki';
+
+  const rawView = (params.get('view') || 'map').toLowerCase();
+  const view: ViewMode = rawView === 'list' ? 'list' : 'map';
 
   const dateParam = params.get('date');
   const validDate =
@@ -84,13 +96,14 @@ function parseInitialParams(): {
 
   const freeOnly = params.get('free') === '1';
   const eventId = params.get('event') || null;
-  return { city, time, date: validDate, topic, freeOnly, eventId };
+  return { city, view, time, date: validDate, topic, freeOnly, eventId };
 }
 
 export const App: React.FC = () => {
   const initial = useMemo(() => parseInitialParams(), []);
 
   const [activeCity, setActiveCity] = useState<CityId>(initial.city);
+  const [viewMode, setViewMode] = useState<ViewMode>(initial.view);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>(initial.time);
   const [selectedDate, setSelectedDate] = useState<string | null>(initial.date);
   const [topicFilter, setTopicFilter] = useState<TopicCategory>(initial.topic);
@@ -106,6 +119,9 @@ export const App: React.FC = () => {
   const [mapStyle, setMapStyle] = useState<MapStyleId>('neon');
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [show3DBuildings, setShow3DBuildings] = useState(true);
+  const [focusCoordinates, setFocusCoordinates] = useState<
+    [number, number] | null
+  >(null);
 
   const [baseCityEvents, setBaseCityEvents] = useState<NormalizedEvent[]>([]);
   const [dateSpecificEvents, setDateSpecificEvents] = useState<
@@ -140,10 +156,11 @@ export const App: React.FC = () => {
   const [locating, setLocating] = useState(false);
   const [shareBarCopied, setShareBarCopied] = useState(false);
 
-  // Sync application state into URL Search Params (?city=...&date=...&time=...&topic=...&free=1&event=...)
+  // Sync application state into URL Search Params
   const syncUrlParams = useCallback(
     (
       city: CityId,
+      view: ViewMode,
       time: TimeFilter,
       date: string | null,
       topic: TopicCategory,
@@ -152,6 +169,7 @@ export const App: React.FC = () => {
     ) => {
       const params = new URLSearchParams();
       params.set('city', city);
+      if (view === 'list') params.set('view', 'list');
       if (date) {
         params.set('date', date);
       } else if (time !== 'all') {
@@ -167,7 +185,7 @@ export const App: React.FC = () => {
     []
   );
 
-  // Load base city events (for overview + month calendar badges)
+  // Load base city events
   const loadCity = useCallback(
     async (cityId: CityId, forceRefresh = false) => {
       setLoading(true);
@@ -188,7 +206,7 @@ export const App: React.FC = () => {
     loadCity(activeCity);
   }, [activeCity, loadCity]);
 
-  // When a specific calendar date is chosen, also fetch date-targeted events from 6Aika API
+  // When a specific calendar date is chosen, also fetch date-targeted events
   useEffect(() => {
     if (!selectedDate) {
       setDateSpecificEvents([]);
@@ -215,19 +233,27 @@ export const App: React.FC = () => {
     };
   }, [activeCity, selectedDate]);
 
-  // Merge base city events + date-specific events (deduplicated by ID)
+  // Merge base city events + date-specific events AND dynamically compute distanceKm
+  // from userLocation (if available) or activeCity center
   const events = useMemo(() => {
+    const refCoords = userLocation || CITIES[activeCity].coordinates;
     const map = new Map<string, NormalizedEvent>();
+
     for (const ev of baseCityEvents) {
-      map.set(ev.id, ev);
+      map.set(ev.id, {
+        ...ev,
+        distanceKm: calculateDistanceKm(refCoords, ev.coordinates),
+      });
     }
     for (const ev of dateSpecificEvents) {
-      map.set(ev.id, ev);
+      map.set(ev.id, {
+        ...ev,
+        distanceKm: calculateDistanceKm(refCoords, ev.coordinates),
+      });
     }
     return Array.from(map.values());
-  }, [baseCityEvents, dateSpecificEvents]);
+  }, [baseCityEvents, dateSpecificEvents, userLocation, activeCity]);
 
-  // Cache normalized event objects for any savedEventIds so Saved Lineup works across cities
   useEffect(() => {
     if (events.length === 0) return;
     setSavedEventsCache((prev) => {
@@ -289,6 +315,7 @@ export const App: React.FC = () => {
         const match =
           ev.title.toLowerCase().includes(q) ||
           ev.venueName.toLowerCase().includes(q) ||
+          ev.streetAddress.toLowerCase().includes(q) ||
           ev.shortDescription.toLowerCase().includes(q);
         if (!match) return false;
       }
@@ -325,6 +352,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     syncUrlParams(
       activeCity,
+      viewMode,
       timeFilter,
       selectedDate,
       topicFilter,
@@ -333,6 +361,7 @@ export const App: React.FC = () => {
     );
   }, [
     activeCity,
+    viewMode,
     timeFilter,
     selectedDate,
     topicFilter,
@@ -344,6 +373,7 @@ export const App: React.FC = () => {
   const handleCitySelect = (cityId: CityId) => {
     setSelectedVenueGroup(null);
     setDeepLinkedEventId(null);
+    setFocusCoordinates(null);
     setActiveCity(cityId);
   };
 
@@ -380,6 +410,11 @@ export const App: React.FC = () => {
     [activeCity, allVenueGroups]
   );
 
+  const handleShowEventOnMap = useCallback((ev: NormalizedEvent) => {
+    setViewMode('map');
+    setFocusCoordinates(ev.coordinates);
+  }, []);
+
   const handleCloseModal = useCallback(() => {
     setSelectedVenueGroup(null);
     setDeepLinkedEventId(null);
@@ -393,6 +428,7 @@ export const App: React.FC = () => {
     async (event?: NormalizedEvent): Promise<boolean> => {
       const params = new URLSearchParams();
       params.set('city', event ? event.cityId : activeCity);
+      if (viewMode === 'list') params.set('view', 'list');
       if (selectedDate) {
         params.set('date', selectedDate);
       } else if (timeFilter !== 'all') {
@@ -410,10 +446,10 @@ export const App: React.FC = () => {
         return false;
       }
     },
-    [activeCity, selectedDate, timeFilter, topicFilter, freeOnly]
+    [activeCity, viewMode, selectedDate, timeFilter, topicFilter, freeOnly]
   );
 
-  const handleNearMe = () => {
+  const handleNearMe = useCallback(() => {
     if (!('geolocation' in navigator)) return;
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
@@ -446,7 +482,7 @@ export const App: React.FC = () => {
       },
       { enableHighAccuracy: true, timeout: 6000 }
     );
-  };
+  }, [activeCity]);
 
   const handleNextVenue = useCallback(() => {
     if (!selectedVenueGroup || venueGroups.length <= 1) {
@@ -488,62 +524,128 @@ export const App: React.FC = () => {
 
   return (
     <div className="relative w-screen h-dvh overflow-hidden bg-slate-950 select-none">
-      {/* FULL-SCREEN WEBGL SNAP MAP */}
-      <SnapMap
-        activeCity={activeCity}
-        venueGroups={venueGroups}
-        selectedVenueId={selectedVenueGroup?.venueId || null}
-        mapStyle={mapStyle}
-        show3DBuildings={show3DBuildings}
-        showHeatmap={showHeatmap}
-        userLocation={userLocation}
-        onSelectVenueGroup={handleOpenVenueGroup}
-      />
+      {/* VIEW 1: FULL-SCREEN WEBGL SNAP MAP */}
+      {viewMode === 'map' ? (
+        <SnapMap
+          activeCity={activeCity}
+          venueGroups={venueGroups}
+          selectedVenueId={selectedVenueGroup?.venueId || null}
+          focusCoordinates={focusCoordinates}
+          mapStyle={mapStyle}
+          show3DBuildings={show3DBuildings}
+          showHeatmap={showHeatmap}
+          userLocation={userLocation}
+          onSelectVenueGroup={handleOpenVenueGroup}
+        />
+      ) : (
+        /* VIEW 2: DEDICATED EVENTS LIST VIEW WITH DISTANCE SORTING & RADIUS FILTER */
+        <EventListView
+          activeCity={activeCity}
+          events={filteredEvents}
+          selectedDate={selectedDate}
+          userLocation={userLocation}
+          locating={locating}
+          savedEventIds={savedEventIds}
+          onRequestUserLocation={handleNearMe}
+          onToggleSaveEvent={handleToggleSaveEvent}
+          onPlayStory={handleSelectSingleEvent}
+          onShowOnMap={handleShowEventOnMap}
+          onResetFilters={() => {
+            setSelectedDate(null);
+            setTimeFilter('all');
+            setTopicFilter('all');
+            setFreeOnly(false);
+            setSearchQuery('');
+          }}
+        />
+      )}
 
       {/* TOP FLOATING HUD */}
       <header className="pointer-events-none absolute inset-x-0 top-0 z-20 p-3 md:p-4 flex flex-col gap-2">
-        {/* Row 1: Brand Identity, 6-City Pills & Map Style Customizer */}
+        {/* Row 1: Brand Identity + View Switcher (Map | List) + 6-City Switcher + Map Controls */}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="pointer-events-auto flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-slate-950/85 border border-white/15 backdrop-blur-xl shadow-2xl">
-            <div className="relative flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-400 via-fuchsia-500 to-amber-400 text-slate-950 font-black text-sm shadow-md">
-              <span>⚡</span>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-sm font-black tracking-tight text-white">
-                  SnapEvents <span className="text-cyan-400">6Aika</span>
-                </h1>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-[10px] font-bold text-rose-300">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping" />
-                  {liveCount} LIVE
-                </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Brand Logo + Live Status */}
+            <div className="pointer-events-auto flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-slate-950/90 border border-white/15 backdrop-blur-xl shadow-2xl">
+              <div className="relative flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-400 via-fuchsia-500 to-amber-400 text-slate-950 font-black text-sm shadow-md">
+                <span>⚡</span>
               </div>
-              <p className="text-[10px] text-slate-400 flex items-center gap-1">
-                {dataSourceType === 'live-api' ? (
-                  <>
-                    <Radio className="w-3 h-3 text-emerald-400" />
-                    <span>Live CORS API (api.hel.fi)</span>
-                  </>
-                ) : dataSourceType === 'indexeddb-cache' ? (
-                  <>
-                    <Database className="w-3 h-3 text-cyan-400" />
-                    <span>IndexedDB Cache (15m TTL)</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-3 h-3 text-amber-400" />
-                    <span>Static 6Aika JSON-LD Feed</span>
-                  </>
-                )}
-                <span>• {filteredEvents.length} events</span>
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-sm font-black tracking-tight text-white">
+                    SnapEvents <span className="text-cyan-400">6Aika</span>
+                  </h1>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-[10px] font-bold text-rose-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping" />
+                    {liveCount} LIVE
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 flex items-center gap-1">
+                  {dataSourceType === 'live-api' ? (
+                    <>
+                      <Radio className="w-3 h-3 text-emerald-400" />
+                      <span>Live 6Aika API</span>
+                    </>
+                  ) : dataSourceType === 'indexeddb-cache' ? (
+                    <>
+                      <Database className="w-3 h-3 text-cyan-400" />
+                      <span>IndexedDB Cache</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3 h-3 text-amber-400" />
+                      <span>City Calendar Feed</span>
+                    </>
+                  )}
+                  <span>
+                    • {filteredEvents.length} events ({venueGroups.length}{' '}
+                    venues)
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            {/* Dedicated MAP VIEW / LIST VIEW Toggle */}
+            <div
+              role="tablist"
+              aria-label="Switch between Map View and List View"
+              className="pointer-events-auto flex items-center gap-1 p-1 rounded-2xl bg-slate-950/90 border border-white/15 backdrop-blur-xl shadow-2xl"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === 'map'}
+                onClick={() => setViewMode('map')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === 'map'
+                    ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950 shadow-lg'
+                    : 'text-slate-300 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <MapIcon className="w-3.5 h-3.5" />
+                <span>Map View</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === 'list'}
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === 'list'
+                    ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950 shadow-lg'
+                    : 'text-slate-300 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <LayoutList className="w-3.5 h-3.5" />
+                <span>List & Distance ({filteredEvents.length})</span>
+              </button>
             </div>
           </div>
 
           {/* 6-City Switcher Bar */}
           <nav
             aria-label="6-City Switcher"
-            className="pointer-events-auto flex items-center gap-1 p-1 rounded-2xl bg-slate-950/85 border border-white/15 backdrop-blur-xl shadow-2xl overflow-x-auto no-scrollbar max-w-full"
+            className="pointer-events-auto flex items-center gap-1 p-1 rounded-2xl bg-slate-950/90 border border-white/15 backdrop-blur-xl shadow-2xl overflow-x-auto no-scrollbar max-w-full"
           >
             {CITY_LIST.map((c) => {
               const isSelected = c.id === activeCity;
@@ -576,67 +678,76 @@ export const App: React.FC = () => {
           </nav>
 
           {/* Map Style Customizer + Layer Toggles + Geolocation */}
-          <div className="pointer-events-auto flex items-center gap-1.5 p-1 rounded-2xl bg-slate-950/85 border border-white/15 backdrop-blur-xl shadow-2xl">
-            {(
-              [
-                { id: 'midnight', label: '🌒 Midnight' },
-                { id: 'neon', label: '⚡ Nordic Neon' },
-                { id: 'daylight', label: '☀️ Daylight' },
-              ] as const
-            ).map((st) => (
-              <button
-                key={st.id}
-                type="button"
-                onClick={() => setMapStyle(st.id)}
-                className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-colors cursor-pointer whitespace-nowrap ${
-                  mapStyle === st.id
-                    ? 'bg-white text-slate-950 shadow'
-                    : 'text-slate-300 hover:bg-white/10'
-                }`}
-              >
-                {st.label}
-              </button>
-            ))}
+          <div className="pointer-events-auto flex items-center gap-1.5 p-1 rounded-2xl bg-slate-950/90 border border-white/15 backdrop-blur-xl shadow-2xl">
+            {viewMode === 'map' && (
+              <>
+                {(
+                  [
+                    { id: 'midnight', label: '🌒 Midnight' },
+                    { id: 'neon', label: '⚡ Neon' },
+                    { id: 'daylight', label: '☀️ Day' },
+                  ] as const
+                ).map((st) => (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => setMapStyle(st.id)}
+                    className={`px-2 py-1.5 rounded-xl text-[11px] font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                      mapStyle === st.id
+                        ? 'bg-white text-slate-950 shadow'
+                        : 'text-slate-300 hover:bg-white/10'
+                    }`}
+                  >
+                    {st.label}
+                  </button>
+                ))}
 
-            <div className="h-4 w-px bg-white/15 mx-0.5" />
+                <div className="h-4 w-px bg-white/15 mx-0.5" />
 
-            <button
-              type="button"
-              onClick={() => setShowHeatmap((v) => !v)}
-              title="Toggle GPU Thermal Heatmap Layer"
-              className={`p-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 ${
-                showHeatmap
-                  ? 'bg-rose-500/25 border-rose-400/50 text-rose-200'
-                  : 'border-transparent text-slate-400 hover:text-white'
-              }`}
-            >
-              <Flame className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline text-[10px]">Thermal</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => setShowHeatmap((v) => !v)}
+                  title="Toggle GPU Thermal Heatmap Layer"
+                  className={`p-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 ${
+                    showHeatmap
+                      ? 'bg-rose-500/25 border-rose-400/50 text-rose-200'
+                      : 'border-transparent text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Flame className="w-3.5 h-3.5" />
+                </button>
 
-            <button
-              type="button"
-              onClick={() => setShow3DBuildings((v) => !v)}
-              title="Toggle 3D Extruded Buildings (zoom >= 14.5)"
-              className={`p-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 ${
-                show3DBuildings
-                  ? 'bg-cyan-500/25 border-cyan-400/50 text-cyan-200'
-                  : 'border-transparent text-slate-400 hover:text-white'
-              }`}
-            >
-              <Box className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline text-[10px]">3D</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => setShow3DBuildings((v) => !v)}
+                  title="Toggle 3D Extruded Buildings (zoom >= 14.5)"
+                  className={`p-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 ${
+                    show3DBuildings
+                      ? 'bg-cyan-500/25 border-cyan-400/50 text-cyan-200'
+                      : 'border-transparent text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Box className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
 
             <button
               type="button"
               onClick={handleNearMe}
-              title="Near Me Browser Geolocation"
-              className="p-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 cursor-pointer"
+              title="Use My GPS Location for Near Me & Event Distances"
+              className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold cursor-pointer flex items-center gap-1 ${
+                userLocation
+                  ? 'bg-emerald-500/25 border-emerald-400/50 text-emerald-200'
+                  : 'bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-400/40 text-cyan-200'
+              }`}
             >
               <LocateFixed
                 className={`w-3.5 h-3.5 ${locating ? 'animate-spin' : ''}`}
               />
+              <span className="hidden sm:inline text-[11px]">
+                {userLocation ? 'GPS Active' : 'Near Me'}
+              </span>
             </button>
 
             <button
@@ -654,8 +765,7 @@ export const App: React.FC = () => {
 
         {/* Row 2: Time Filter Pills + Calendar Button + Topic Filter Carousel + Search & Lineup */}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          {/* Time Filter Pills + Interactive Calendar Button */}
-          <div className="pointer-events-auto flex items-center gap-1 p-1 rounded-2xl bg-slate-950/85 border border-white/15 backdrop-blur-xl shadow-xl">
+          <div className="pointer-events-auto flex items-center gap-1 p-1 rounded-2xl bg-slate-950/90 border border-white/15 backdrop-blur-xl shadow-xl">
             {(
               [
                 { id: 'all', label: '✨ All Times' },
@@ -683,7 +793,6 @@ export const App: React.FC = () => {
 
             <div className="h-4 w-px bg-white/15 mx-0.5" />
 
-            {/* Calendar Picker Trigger Button */}
             <button
               type="button"
               onClick={() => setCalendarModalOpen(true)}
@@ -725,7 +834,7 @@ export const App: React.FC = () => {
           </div>
 
           {/* Topic Filter Pills + Free Only Toggle */}
-          <div className="pointer-events-auto flex items-center gap-1 p-1 rounded-2xl bg-slate-950/85 border border-white/15 backdrop-blur-xl shadow-xl overflow-x-auto no-scrollbar max-w-full">
+          <div className="pointer-events-auto flex items-center gap-1 p-1 rounded-2xl bg-slate-950/90 border border-white/15 backdrop-blur-xl shadow-xl overflow-x-auto no-scrollbar max-w-full">
             {TOPICS.map((topic) => {
               const active = topicFilter === topic.id;
               return (
@@ -771,18 +880,18 @@ export const App: React.FC = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={`Search ${cityMeta.name}...`}
-                className="pl-8 pr-3 py-1.5 rounded-2xl bg-slate-950/85 border border-white/15 backdrop-blur-xl text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 w-36 sm:w-44"
+                className="pl-8 pr-3 py-1.5 rounded-2xl bg-slate-950/90 border border-white/15 backdrop-blur-xl text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-cyan-400 w-36 sm:w-44"
               />
             </div>
 
             <button
               type="button"
               onClick={() => setAgendaDrawerOpen(true)}
-              className="px-3 py-1.5 rounded-2xl bg-slate-950/85 hover:bg-slate-900 border border-white/15 backdrop-blur-xl text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer shadow-xl"
-              title="Open Chronological Day Schedule & Saved Lineup"
+              className="px-3 py-1.5 rounded-2xl bg-slate-950/90 hover:bg-slate-900 border border-white/15 backdrop-blur-xl text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer shadow-xl"
+              title="Open Saved Lineup & Chronological Day Schedule"
             >
               <ListOrdered className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="hidden sm:inline">Schedule</span>
+              <span className="hidden sm:inline">Lineup</span>
               {savedEventIds.length > 0 && (
                 <span className="px-1.5 py-0.2 rounded-full bg-fuchsia-500 text-[10px] font-black text-white flex items-center gap-0.5">
                   <Bookmark className="w-2.5 h-2.5 fill-current" />
@@ -800,8 +909,8 @@ export const App: React.FC = () => {
                   setTimeout(() => setShareBarCopied(false), 2200);
                 }
               }}
-              className="px-3 py-1.5 rounded-2xl bg-slate-950/85 hover:bg-slate-900 border border-white/15 backdrop-blur-xl text-xs font-bold text-cyan-300 flex items-center gap-1.5 cursor-pointer shadow-xl"
-              title="Copy shareable deep-link URL for current map view & date"
+              className="px-3 py-1.5 rounded-2xl bg-slate-950/90 hover:bg-slate-900 border border-white/15 backdrop-blur-xl text-xs font-bold text-cyan-300 flex items-center gap-1.5 cursor-pointer shadow-xl"
+              title="Copy shareable deep-link URL for current view & date"
             >
               {shareBarCopied ? (
                 <>
@@ -820,7 +929,7 @@ export const App: React.FC = () => {
 
         {/* Row 3 (Collapsible): 14-Day Horizontal Quick-Pick Date Strip */}
         {showDateStrip && (
-          <div className="pointer-events-auto flex items-center gap-1.5 p-1.5 rounded-2xl bg-slate-950/85 border border-white/15 backdrop-blur-xl shadow-2xl overflow-x-auto no-scrollbar animate-fade-in">
+          <div className="pointer-events-auto flex items-center gap-1.5 p-1.5 rounded-2xl bg-slate-950/90 border border-white/15 backdrop-blur-xl shadow-2xl overflow-x-auto no-scrollbar animate-fade-in">
             <button
               type="button"
               onClick={() => setCalendarModalOpen(true)}
@@ -875,91 +984,93 @@ export const App: React.FC = () => {
         )}
       </header>
 
-      {/* BOTTOM SNAP STORY TRAY + MANDATORY CC BY 4.0 ATTRIBUTION BAR */}
+      {/* BOTTOM SNAP STORY TRAY (in Map View) + MANDATORY CC BY 4.0 ATTRIBUTION BAR */}
       <footer className="pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3 md:p-4 flex flex-col gap-2">
-        <div className="pointer-events-auto flex items-center gap-3 overflow-x-auto no-scrollbar py-1.5 px-3 rounded-3xl bg-slate-950/80 border border-white/15 backdrop-blur-xl shadow-2xl">
-          <div className="shrink-0 pr-2 border-r border-white/10 hidden sm:flex flex-col">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400">
-              {selectedDateLabel
-                ? `${cityMeta.name} • ${selectedDateLabel}`
-                : `${cityMeta.name} Stories`}
-            </span>
-            <span className="text-[11px] font-semibold text-slate-300">
-              {venueGroups.length} Active Venues
-            </span>
-          </div>
-
-          {venueGroups.length === 0 ? (
-            <div className="py-2 px-3 text-xs text-slate-300 flex items-center gap-2">
-              <span>
-                No events match this date/filter in {cityMeta.name}.
+        {viewMode === 'map' && (
+          <div className="pointer-events-auto flex items-center gap-3 overflow-x-auto no-scrollbar py-1.5 px-3 rounded-3xl bg-slate-950/80 border border-white/15 backdrop-blur-xl shadow-2xl">
+            <div className="shrink-0 pr-2 border-r border-white/10 hidden sm:flex flex-col">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400">
+                {selectedDateLabel
+                  ? `${cityMeta.name} • ${selectedDateLabel}`
+                  : `${cityMeta.name} Stories`}
               </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedDate(null);
-                  setTimeFilter('all');
-                  setTopicFilter('all');
-                  setFreeOnly(false);
-                  setSearchQuery('');
-                }}
-                className="px-2.5 py-1 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs cursor-pointer"
-              >
-                Reset Filters
-              </button>
+              <span className="text-[11px] font-semibold text-slate-300">
+                {venueGroups.length} Venues • {filteredEvents.length} Events
+              </span>
             </div>
-          ) : (
-            venueGroups.slice(0, 18).map((vg) => {
-              const lead = vg.events[0];
-              return (
+
+            {venueGroups.length === 0 ? (
+              <div className="py-2 px-3 text-xs text-slate-300 flex items-center gap-2">
+                <span>
+                  No events match this date/filter in {cityMeta.name}.
+                </span>
                 <button
-                  key={vg.venueId}
                   type="button"
-                  onClick={() => handleOpenVenueGroup(vg)}
-                  className="group shrink-0 flex items-center gap-2.5 pr-3 pl-1.5 py-1 rounded-2xl hover:bg-white/10 transition-all cursor-pointer text-left"
+                  onClick={() => {
+                    setSelectedDate(null);
+                    setTimeFilter('all');
+                    setTopicFilter('all');
+                    setFreeOnly(false);
+                    setSearchQuery('');
+                  }}
+                  className="px-2.5 py-1 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs cursor-pointer"
                 >
-                  <div className="relative w-11 h-11 rounded-full p-[2px] bg-gradient-to-tr from-rose-500 via-fuchsia-500 to-cyan-400 shrink-0 group-hover:scale-105 transition-transform">
-                    <div className="w-full h-full rounded-full bg-slate-900 overflow-hidden flex items-center justify-center">
-                      {vg.coverImageUrl ? (
-                        <img
-                          src={vg.coverImageUrl}
-                          alt=""
-                          loading="lazy"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-lg">{vg.topEmoji}</span>
+                  Reset Filters
+                </button>
+              </div>
+            ) : (
+              venueGroups.slice(0, 24).map((vg) => {
+                const lead = vg.events[0];
+                return (
+                  <button
+                    key={vg.venueId}
+                    type="button"
+                    onClick={() => handleOpenVenueGroup(vg)}
+                    className="group shrink-0 flex items-center gap-2.5 pr-3 pl-1.5 py-1 rounded-2xl hover:bg-white/10 transition-all cursor-pointer text-left"
+                  >
+                    <div className="relative w-11 h-11 rounded-full p-[2px] bg-gradient-to-tr from-rose-500 via-fuchsia-500 to-cyan-400 shrink-0 group-hover:scale-105 transition-transform">
+                      <div className="w-full h-full rounded-full bg-slate-900 overflow-hidden flex items-center justify-center">
+                        {vg.coverImageUrl ? (
+                          <img
+                            src={vg.coverImageUrl}
+                            alt=""
+                            loading="lazy"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-lg">{vg.topEmoji}</span>
+                        )}
+                      </div>
+                      {vg.hasLiveEvent && (
+                        <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1 py-0.2 rounded bg-rose-500 text-[8px] font-black uppercase text-white">
+                          LIVE
+                        </span>
                       )}
                     </div>
-                    {vg.hasLiveEvent && (
-                      <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1 py-0.2 rounded bg-rose-500 text-[8px] font-black uppercase text-white">
-                        LIVE
-                      </span>
-                    )}
-                  </div>
-                  <div className="max-w-[135px]">
-                    <p className="text-xs font-bold text-white truncate">
-                      {vg.venueName}
-                    </p>
-                    <p className="text-[10px] text-slate-300 truncate">
-                      {lead.title}
-                    </p>
-                    <p className="text-[9px] text-cyan-300 font-semibold flex items-center gap-1">
-                      <MapPin className="w-2.5 h-2.5" />
-                      <span>
-                        {vg.events.length}{' '}
-                        {vg.events.length === 1 ? 'story' : 'stories'}
-                      </span>
-                    </p>
-                  </div>
-                </button>
-              );
-            })
-          )}
-        </div>
+                    <div className="max-w-[145px]">
+                      <p className="text-xs font-bold text-white truncate">
+                        {vg.venueName}
+                      </p>
+                      <p className="text-[10px] text-slate-300 truncate">
+                        {lead.title}
+                      </p>
+                      <p className="text-[9px] text-cyan-300 font-semibold flex items-center gap-1">
+                        <MapPin className="w-2.5 h-2.5" />
+                        <span>
+                          {formatDistance(vg.distanceKm)} • {vg.events.length}{' '}
+                          {vg.events.length === 1 ? 'story' : 'stories'}
+                        </span>
+                      </p>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        )}
 
         {/* Mandatory 6Aika CC BY 4.0 & OpenFreeMap Attribution Bar */}
-        <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-2 px-3.5 py-1.5 rounded-2xl bg-slate-950/85 border border-white/10 backdrop-blur-md text-[10px] text-slate-400">
+        <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-2 px-3.5 py-1.5 rounded-2xl bg-slate-950/90 border border-white/10 backdrop-blur-md text-[10px] text-slate-400">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span>{LINKED_EVENTS_CREDIT_TEXT}</span>
             <span>•</span>

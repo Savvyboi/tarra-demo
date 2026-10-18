@@ -29,6 +29,7 @@ import {
   buildGoogleCalendarUrl,
   downloadEventIcs,
 } from '../../utils/calendarUtils';
+import { formatDistance } from '../../utils/distanceUtils';
 import { getSafeEventImageUrl } from '../../utils/licenseGuard';
 
 // Modern Web Guidance (animate-to-from-top-layer): Probe discrete display transition support
@@ -372,7 +373,8 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                 <p className="text-[11px] text-slate-300 truncate flex items-center gap-1">
                   <MapPin className="w-3 h-3 text-cyan-400 shrink-0" />
                   <span>
-                    {cityMeta.name} • {currentEvent.streetAddress}
+                    {formatDistance(currentEvent.distanceKm)} • {cityMeta.name} •{' '}
+                    {currentEvent.streetAddress}
                   </span>
                 </p>
               </div>

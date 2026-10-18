@@ -20,13 +20,19 @@ export function parseDateKey(dateKey: string): Date {
 }
 
 /**
- * Checks if an event is active on the given YYYY-MM-DD date.
+ * Checks if an event takes place on the given YYYY-MM-DD date.
+ * Checks individual occurrenceDates first, then falls back to startTime..endTime span.
  */
 export function doesEventOccurOnDate(
-  event: Pick<NormalizedEvent, 'startTime' | 'endTime' | 'dateKey'>,
+  event: Pick<NormalizedEvent, 'startTime' | 'endTime' | 'dateKey' | 'occurrenceDates'>,
   targetDateKey: string
 ): boolean {
   if (event.dateKey === targetDateKey) return true;
+
+  if (Array.isArray(event.occurrenceDates) && event.occurrenceDates.length > 0) {
+    return event.occurrenceDates.some((occ) => occ.dateKey === targetDateKey);
+  }
+
   const dayStart = parseDateKey(targetDateKey);
   const dayEnd = new Date(
     dayStart.getFullYear(),
@@ -62,7 +68,6 @@ export function buildMonthGrid(
 ): CalendarDayCell[] {
   const todayKey = toDateKey(new Date());
   const firstOfMonth = new Date(year, month, 1);
-  // Convert Sunday=0..Saturday=6 into Monday=0..Sunday=6
   const startOffset = (firstOfMonth.getDay() + 6) % 7;
   const gridStartDate = new Date(year, month, 1 - startOffset);
 

@@ -20,6 +20,10 @@ export type TopicCategory =
 
 export type MapStyleId = 'midnight' | 'neon' | 'daylight';
 
+export type ViewMode = 'map' | 'list';
+
+export type ListSortMode = 'distance' | 'time' | 'live';
+
 export interface LinkedEventImage {
   id: number | string;
   url: string;
@@ -76,6 +80,11 @@ export interface LinkedEventOffer {
   info_url?: LocalizedString | null;
 }
 
+export interface RawEventOccurrence {
+  start: string;
+  end?: string | null;
+}
+
 export interface RawLinkedEvent {
   id: string;
   name: LocalizedString;
@@ -83,6 +92,7 @@ export interface RawLinkedEvent {
   description?: LocalizedString | null;
   start_time: string | null;
   end_time?: string | null;
+  occurrence_dates?: RawEventOccurrence[];
   location?: LinkedEventPlace | null;
   location_extra_info?: LocalizedString | null;
   keywords?: LinkedEventKeyword[];
@@ -93,7 +103,6 @@ export interface RawLinkedEvent {
   data_source?: string | null;
   publisher?: string | null;
   event_status?: string;
-  /** Optional relative offset metadata used in static demo feeds for dynamic date anchoring */
   _demo_offset_hours?: number;
   _demo_duration_hours?: number;
   _demo_day_offset?: number;
@@ -121,6 +130,12 @@ export interface LicenseAttribution {
   apiLicenseUrl: string;
 }
 
+export interface NormalizedOccurrence {
+  start: Date;
+  end: Date;
+  dateKey: string;
+}
+
 export interface NormalizedEvent {
   id: string;
   cityId: CityId;
@@ -129,8 +144,8 @@ export interface NormalizedEvent {
   descriptionHtml: string;
   startTime: Date;
   endTime: Date;
-  /** Local YYYY-MM-DD key for fast calendar matching */
   dateKey: string;
+  occurrenceDates: NormalizedOccurrence[];
   isLiveNow: boolean;
   isStartingSoon: boolean;
   isTonight: boolean;
@@ -142,6 +157,8 @@ export interface NormalizedEvent {
   venueName: string;
   streetAddress: string;
   coordinates: [number, number]; // [lon, lat]
+  /** Distance in kilometers from user GPS (or active city center fallback) */
+  distanceKm: number;
   imageUrl: string | null;
   imageAlt: string;
   attribution: LicenseAttribution;
@@ -159,6 +176,7 @@ export interface VenueStoryGroup {
   streetAddress: string;
   cityId: CityId;
   coordinates: [number, number]; // [lon, lat]
+  distanceKm: number;
   events: NormalizedEvent[];
   hasLiveEvent: boolean;
   hasStartingSoon: boolean;

@@ -13,6 +13,7 @@ interface SnapMapProps {
   activeCity: CityId;
   venueGroups: VenueStoryGroup[];
   selectedVenueId: string | null;
+  focusCoordinates?: [number, number] | null;
   mapStyle: MapStyleId;
   show3DBuildings: boolean;
   showHeatmap: boolean;
@@ -48,6 +49,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
   activeCity,
   venueGroups,
   selectedVenueId,
+  focusCoordinates,
   mapStyle,
   show3DBuildings,
   showHeatmap,
@@ -334,6 +336,19 @@ export const SnapMap: React.FC<SnapMapProps> = ({
       essential: true,
     });
   }, [activeCity]);
+
+  // Fly directly to a specific venue when "Show on Map" is clicked in List View
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !focusCoordinates) return;
+    map.flyTo({
+      center: focusCoordinates,
+      zoom: 15.8,
+      pitch: 56,
+      duration: 1200,
+      essential: true,
+    });
+  }, [focusCoordinates]);
 
   // Switch MapLibre base style when mapStyle changes
   const prevStyleRef = useRef<MapStyleId>(mapStyle);

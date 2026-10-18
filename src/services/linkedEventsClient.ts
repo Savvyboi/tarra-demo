@@ -3,6 +3,7 @@ import {
   CityId,
   LinkedEventsApiResponse,
   NormalizedEvent,
+  NormalizedOccurrence,
   RawLinkedEvent,
   TopicCategory,
   VenueStoryGroup,
@@ -12,13 +13,14 @@ import {
   parseDateKey,
   toDateKey,
 } from '../utils/calendarUtils';
+import { calculateDistanceKm } from '../utils/distanceUtils';
 import {
   buildLicenseAttribution,
   getSafeEventImageUrl,
   pickLocalizedText,
 } from '../utils/licenseGuard';
 
-const DB_NAME = 'snapevents_linkedevents_cache_v2';
+const DB_NAME = 'snapevents_linkedevents_cache_v3';
 const STORE_NAME = 'city_feeds';
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -101,42 +103,42 @@ function classifyTopic(raw: RawLinkedEvent): Exclude<TopicCategory, 'all'> {
   const haystack = `${title} ${shortDesc} ${kwText}`;
 
   if (
-    /yöelämä|klubi|club|dj|party|bileet|nightlife|bar|pub|afterglow/.test(
+    /yöelämä|klubi|club|clubbing|dj|party|bileet|nightlife|bar|pub|afterglow/.test(
       haystack
     )
   ) {
     return 'nightlife';
   }
   if (
-    /musiik|music|konsert|concert|jazz|rock|pop|sinfonia|symphony|choir|kuoro|keikka|gig|synth|vinyl|opera|ooppera/.test(
+    /musiik|music|konsert|concert|concerts|gigs|jazz|rock|pop|sinfonia|symphony|choir|kuoro|keikka|gig|synth|vinyl|opera|ooppera|karaoke|swing/.test(
       haystack
     )
   ) {
     return 'music';
   }
   if (
-    /ruoka|food|market|markkinat|kahvila|cafe|wine|panimo|street food|glögi|taste|ravintola/.test(
+    /ruoka|food|market|markets|markkinat|kahvila|cafe|wine|panimo|street food|glögi|taste|ravintola|cooking|beverage/.test(
       haystack
     )
   ) {
     return 'food';
   }
   if (
-    /liikunta|urheilu|sport|kuntosali|gym|juoksu|run|jooga|yoga|hockey|jääkiekko|kiipeily|boulder|basketball|koripallo|uinti|tanssi/.test(
+    /liikunta|urheilu|sport|sports|fitness|kuntosali|gym|juoksu|run|jooga|yoga|hockey|jääkiekko|tps|ilves|tappara|kärpät|kiipeily|boulder|basketball|koripallo|uinti|vesijumppa|jumppa|tanssi|dance/.test(
       haystack
     )
   ) {
     return 'sports';
   }
   if (
-    /luonto|nature|puisto|park|ulkoilu|outdoor|retki|vaellus|aurora|revontul|ranta|beach|meri|saaristo/.test(
+    /luonto|nature|puisto|park|ulkoilu|outdoor|retki|excursion|vaellus|aurora|revontul|ranta|beach|meri|saaristo|sadonkorjuu/.test(
       haystack
     )
   ) {
     return 'nature';
   }
   if (
-    /perhe|family|laps|children|nuor|youth|seikkailu|leikki|muumi|moomin|satutunti|koululais/.test(
+    /perhe|family|kids|laps|children|nuor|youth|youths|taapero|vauva|leikkipuisto|seikkailu|leikki|muumi|moomin|satutunti|satutuokio|koululais/.test(
       haystack
     )
   ) {
@@ -167,7 +169,8 @@ function buildReittiopasUrl(
 export function normalizeLinkedEvent(
   raw: RawLinkedEvent,
   cityId: CityId,
-  index: number
+  index: number,
+  referenceCoords?: [number, number]
 ): NormalizedEvent | null {
   const coords = raw.location?.position?.coordinates;
   let validCoords: [number, number];
@@ -182,7 +185,7 @@ export function normalizeLinkedEvent(
   } else {
     const base = CITIES[cityId].coordinates;
     const angle = (index * 137.5 * Math.PI) / 180;
-    const radius = 0.004 + (index % 5) * 0.0025;
+    const radius = 0.004 + (index % 7) * 0.0022;
     validCoords = [
       Number((base[0] + Math.cos(angle) * radius * 1.8).toFixed(6)),
       Number((base[1] + Math.sin(angle) * radius).toFixed(6)),
@@ -190,16 +193,41 @@ export function normalizeLinkedEvent(
   }
 
   const now = new Date();
+  const occurrenceDates: NormalizedOccurrence[] = [];
+
+  if (Array.isArray(raw.occurrence_dates) && raw.occurrence_dates.length > 0) {
+    for (const occ of raw.occurrence_dates) {
+      const s = new Date(occ.start);
+      if (Number.isNaN(s.getTime())) continue;
+      const e = occ.end
+        ? new Date(occ.end)
+        : new Date(s.getTime() + 2.5 * 3600 * 1000);
+      occurrenceDates.push({
+        start: s,
+        end: Number.isNaN(e.getTime()) || e <= s ? new Date(s.getTime() + 2.5 * 3600 * 1000) : e,
+        dateKey: toDateKey(s),
+      });
+    }
+  }
+
   let startTime: Date;
   let endTime: Date;
 
-  // Dynamic Date Shifting for Demo Reliability on static feeds (Turku, Tampere, Oulu)
-  if (typeof raw._demo_offset_hours === 'number') {
+  if (occurrenceDates.length > 0) {
+    // Pick current or next upcoming occurrence
+    const upcoming =
+      occurrenceDates.find((o) => o.end >= now) || occurrenceDates[0];
+    startTime = upcoming.start;
+    endTime = upcoming.end;
+  } else if (typeof raw._demo_offset_hours === 'number') {
     const dayOffset =
       typeof raw._demo_day_offset === 'number' ? raw._demo_day_offset : 0;
     const durationHours =
-      typeof raw._demo_duration_hours === 'number' ? raw._demo_duration_hours : 3;
-    const totalOffsetMs = (dayOffset * 24 + raw._demo_offset_hours) * 3600 * 1000;
+      typeof raw._demo_duration_hours === 'number'
+        ? raw._demo_duration_hours
+        : 3;
+    const totalOffsetMs =
+      (dayOffset * 24 + raw._demo_offset_hours) * 3600 * 1000;
     startTime = new Date(now.getTime() + totalOffsetMs);
     endTime = new Date(startTime.getTime() + durationHours * 3600 * 1000);
   } else {
@@ -215,19 +243,14 @@ export function normalizeLinkedEvent(
     if (Number.isNaN(endTime.getTime()) || endTime <= startTime) {
       endTime = new Date(startTime.getTime() + 2.5 * 3600 * 1000);
     }
+  }
 
-    // For live Capital Region events that are multi-week ongoing exhibitions (duration > 72h),
-    // anchor their daily session time across upcoming days so they populate both today and calendar days cleanly
-    const durationHours =
-      (endTime.getTime() - startTime.getTime()) / (3600 * 1000);
-    if (durationHours > 72 && startTime <= now && endTime >= now) {
-      const daySpread = index % 6; // 0..5 days out
-      const slotOffsetHours = ((index % 5) - 2) * 0.75;
-      startTime = new Date(
-        now.getTime() + (daySpread * 24 + slotOffsetHours) * 3600 * 1000
-      );
-      endTime = new Date(startTime.getTime() + 3.5 * 3600 * 1000);
-    }
+  if (occurrenceDates.length === 0) {
+    occurrenceDates.push({
+      start: startTime,
+      end: endTime,
+      dateKey: toDateKey(startTime),
+    });
   }
 
   const diffFromStartHours =
@@ -235,19 +258,22 @@ export function normalizeLinkedEvent(
   const diffUntilStartHours =
     (startTime.getTime() - now.getTime()) / (3600 * 1000);
 
-  const isLiveNow = now >= startTime && now <= endTime;
+  const isLiveNow =
+    (now >= startTime && now <= endTime) ||
+    occurrenceDates.some((o) => now >= o.start && now <= o.end);
   const isStartingSoon =
-    !isLiveNow && diffUntilStartHours > 0 && diffUntilStartHours <= 3;
+    !isLiveNow && diffUntilStartHours > 0 && diffUntilStartHours <= 4;
 
+  const todayKey = toDateKey(now);
   const isSameDay =
-    startTime.getFullYear() === now.getFullYear() &&
-    startTime.getMonth() === now.getMonth() &&
-    startTime.getDate() === now.getDate();
+    toDateKey(startTime) === todayKey ||
+    occurrenceDates.some((o) => o.dateKey === todayKey);
+
   const isTonight =
     isLiveNow ||
     isStartingSoon ||
     isSameDay ||
-    (diffUntilStartHours >= 0 && diffUntilStartHours <= 16);
+    (diffUntilStartHours >= 0 && diffUntilStartHours <= 18);
 
   const dayOfWeek = startTime.getDay();
   const isThisWeekend =
@@ -255,7 +281,11 @@ export function normalizeLinkedEvent(
     dayOfWeek === 0 ||
     dayOfWeek === 5 ||
     dayOfWeek === 6 ||
-    (diffUntilStartHours >= 0 && diffUntilStartHours <= 72);
+    occurrenceDates.some((o) => {
+      const d = o.start.getDay();
+      const hrs = (o.start.getTime() - now.getTime()) / (3600 * 1000);
+      return hrs >= -6 && hrs <= 120 && (d === 0 || d === 5 || d === 6);
+    });
 
   const category = classifyTopic(raw);
   const topicMeta = TOPICS.find((t) => t.id === category) || TOPICS[0];
@@ -300,15 +330,18 @@ export function normalizeLinkedEvent(
 
   const reittiopasUrl = buildReittiopasUrl(cityId, venueName, validCoords);
 
+  const refPoint = referenceCoords || CITIES[cityId].coordinates;
+  const distanceKm = calculateDistanceKm(refPoint, validCoords);
+
   const heatWeight = isLiveNow
     ? 1.0
     : isStartingSoon
-      ? 0.82
+      ? 0.85
       : isTonight
-        ? 0.65
+        ? 0.68
         : diffFromStartHours < 24
-          ? 0.45
-          : 0.35;
+          ? 0.5
+          : 0.38;
 
   return {
     id: raw.id,
@@ -319,6 +352,7 @@ export function normalizeLinkedEvent(
     startTime,
     endTime,
     dateKey: toDateKey(startTime),
+    occurrenceDates,
     isLiveNow,
     isStartingSoon,
     isTonight,
@@ -330,6 +364,7 @@ export function normalizeLinkedEvent(
     venueName,
     streetAddress,
     coordinates: validCoords,
+    distanceKm,
     imageUrl,
     imageAlt,
     attribution,
@@ -342,6 +377,39 @@ export function normalizeLinkedEvent(
   };
 }
 
+/**
+ * Deduplicates recurring sub-events that share the exact same title and venue
+ * by combining their occurrence dates into a single NormalizedEvent.
+ */
+function consolidateRecurringEvents(
+  events: NormalizedEvent[]
+): NormalizedEvent[] {
+  const byTitleAndVenue = new Map<string, NormalizedEvent>();
+
+  for (const ev of events) {
+    const key = `${ev.cityId}:${ev.title.toLowerCase().trim()}:${ev.coordinates[0].toFixed(4)},${ev.coordinates[1].toFixed(4)}`;
+    const existing = byTitleAndVenue.get(key);
+    if (!existing) {
+      byTitleAndVenue.set(key, ev);
+    } else {
+      for (const occ of ev.occurrenceDates) {
+        if (!existing.occurrenceDates.some((o) => o.dateKey === occ.dateKey)) {
+          existing.occurrenceDates.push(occ);
+        }
+      }
+      existing.isLiveNow = existing.isLiveNow || ev.isLiveNow;
+      existing.isStartingSoon = existing.isStartingSoon || ev.isStartingSoon;
+      existing.isTonight = existing.isTonight || ev.isTonight;
+      existing.isThisWeekend = existing.isThisWeekend || ev.isThisWeekend;
+      if (!existing.imageUrl && ev.imageUrl) {
+        existing.imageUrl = ev.imageUrl;
+      }
+    }
+  }
+
+  return Array.from(byTitleAndVenue.values());
+}
+
 export interface CityEventsResult {
   cityId: CityId;
   events: NormalizedEvent[];
@@ -349,10 +417,6 @@ export interface CityEventsResult {
   fetchedAt: Date;
 }
 
-/**
- * Fetches events for a city, optionally querying a specific YYYY-MM-DD calendar date
- * from the live 6Aika API and merging with the base schedule.
- */
 export async function fetchCityEvents(
   cityId: CityId,
   forceRefresh = false,
@@ -364,9 +428,10 @@ export async function fetchCityEvents(
   if (!forceRefresh) {
     const cached = await readCachedFeed(cacheKey);
     if (cached && Array.isArray(cached.payload?.data)) {
-      const events = cached.payload.data
+      const normalized = cached.payload.data
         .map((raw, idx) => normalizeLinkedEvent(raw, cityId, idx))
         .filter((e): e is NormalizedEvent => e !== null);
+      const events = consolidateRecurringEvents(normalized);
       if (events.length > 0) {
         return {
           cityId,
@@ -385,20 +450,45 @@ export async function fetchCityEvents(
   const staticFeedUrl = `${import.meta.env.BASE_URL}feeds/${cityId}.json`;
 
   if (cityConfig.dataMechanism === 'live-api') {
-    const dateParams = targetDateKey
-      ? `start=${targetDateKey}&end=${targetDateKey}&sort=start_time&page_size=45`
-      : `start=now&sort=end_time&page_size=45`;
-    const liveApiUrl = `https://api.hel.fi/linkedevents/v1/event/?division=${cityId}&include=location,keywords&${dateParams}`;
-
     try {
-      const response = await fetch(liveApiUrl, {
-        headers: { Accept: 'application/json' },
-      });
-      if (!response.ok) {
-        throw new Error(`Linked Events API returned ${response.status}`);
+      // Load both bundled 300-event snapshot AND live API pages for maximum coverage
+      const dateQuery = targetDateKey
+        ? `start=${targetDateKey}&end=${targetDateKey}&sort=end_time&page_size=100`
+        : `start=now&sort=end_time&page_size=100`;
+
+      const page1Url = `https://api.hel.fi/linkedevents/v1/event/?division=${cityId}&include=location,keywords&${dateQuery}&page=1`;
+      const page2Url = `https://api.hel.fi/linkedevents/v1/event/?division=${cityId}&include=location,keywords&${dateQuery}&page=2`;
+
+      const [res1, res2, staticRes] = await Promise.allSettled([
+        fetch(page1Url, { headers: { Accept: 'application/json' } }),
+        fetch(page2Url, { headers: { Accept: 'application/json' } }),
+        !targetDateKey
+          ? fetch(staticFeedUrl, { headers: { Accept: 'application/json' } })
+          : Promise.reject(new Error('skip static on custom date')),
+      ]);
+
+      const combinedRaw: RawLinkedEvent[] = [];
+      const seenIds = new Set<string>();
+
+      for (const settled of [res1, res2, staticRes]) {
+        if (settled.status === 'fulfilled' && settled.value.ok) {
+          const json = (await settled.value.json()) as LinkedEventsApiResponse;
+          if (Array.isArray(json.data)) {
+            for (const item of json.data) {
+              if (!seenIds.has(item.id)) {
+                seenIds.add(item.id);
+                combinedRaw.push(item);
+              }
+            }
+          }
+        }
       }
-      const payload = (await response.json()) as LinkedEventsApiResponse;
-      if (Array.isArray(payload.data) && payload.data.length > 0) {
+
+      if (combinedRaw.length > 0) {
+        const payload: LinkedEventsApiResponse = {
+          meta: { count: combinedRaw.length, next: null, previous: null },
+          data: combinedRaw,
+        };
         await writeCachedFeed({
           cacheKey,
           cityId,
@@ -406,31 +496,11 @@ export async function fetchCityEvents(
           source: 'live-api',
           payload,
         });
-        const events = payload.data
+
+        const normalized = combinedRaw
           .map((raw, idx) => normalizeLinkedEvent(raw, cityId, idx))
           .filter((e): e is NormalizedEvent => e !== null);
-
-        // If targetDateKey was specifically queried, ensure returned multi-week events are anchored to targetDateKey
-        if (targetDateKey) {
-          const targetDay = parseDateKey(targetDateKey);
-          for (let i = 0; i < events.length; i++) {
-            const ev = events[i];
-            if (!doesEventOccurOnDate(ev, targetDateKey)) {
-              const hour = 12 + (i % 8);
-              const anchoredStart = new Date(
-                targetDay.getFullYear(),
-                targetDay.getMonth(),
-                targetDay.getDate(),
-                hour,
-                0,
-                0
-              );
-              ev.startTime = anchoredStart;
-              ev.endTime = new Date(anchoredStart.getTime() + 2.5 * 3600 * 1000);
-              ev.dateKey = targetDateKey;
-            }
-          }
-        }
+        const events = consolidateRecurringEvents(normalized);
 
         return {
           cityId,
@@ -447,7 +517,7 @@ export async function fetchCityEvents(
     }
   }
 
-  // Static JSON-LD feed (Turku, Tampere, Oulu) or offline fallback (Helsinki, Espoo, Vantaa)
+  // Static JSON-LD feed (Turku 450 events, Tampere 450 events, Oulu 450 events, or Capital fallback)
   const fallbackRes = await fetch(staticFeedUrl, {
     headers: { Accept: 'application/json' },
   });
@@ -466,23 +536,23 @@ export async function fetchCityEvents(
     payload,
   });
 
-  const events = (payload.data || [])
+  const normalized = (payload.data || [])
     .map((raw, idx) => normalizeLinkedEvent(raw, cityId, idx))
     .filter((e): e is NormalizedEvent => e !== null);
 
-  // If the user picked a custom calendar date beyond the pre-generated 21-day static window,
-  // dynamically project a set of the city's events onto that date so any calendar day can be explored
+  const events = consolidateRecurringEvents(normalized);
+
   if (
     targetDateKey &&
     !events.some((ev) => doesEventOccurOnDate(ev, targetDateKey))
   ) {
     const targetDay = parseDateKey(targetDateKey);
-    const projected = events.slice(0, 5).map((ev, idx) => {
+    const projected = events.slice(0, 12).map((ev, idx) => {
       const start = new Date(
         targetDay.getFullYear(),
         targetDay.getMonth(),
         targetDay.getDate(),
-        14 + idx * 2,
+        12 + (idx % 8),
         0,
         0
       );
@@ -516,7 +586,7 @@ export function groupEventsByVenue(
 
   for (const ev of events) {
     const coordKey = `${ev.coordinates[0].toFixed(4)},${ev.coordinates[1].toFixed(4)}`;
-    const groupKey = `${ev.cityId}:${ev.venueId}:${coordKey}`;
+    const groupKey = `${ev.cityId}:${coordKey}`;
 
     const existing = map.get(groupKey);
     if (!existing) {
@@ -526,6 +596,7 @@ export function groupEventsByVenue(
         streetAddress: ev.streetAddress,
         cityId: ev.cityId,
         coordinates: ev.coordinates,
+        distanceKm: ev.distanceKm,
         events: [ev],
         hasLiveEvent: ev.isLiveNow,
         hasStartingSoon: ev.isStartingSoon,
@@ -535,7 +606,6 @@ export function groupEventsByVenue(
         totalHeat: ev.heatWeight,
       });
     } else {
-      // Avoid duplicate event IDs at the same venue
       if (!existing.events.some((e) => e.id === ev.id)) {
         existing.events.push(ev);
       }
@@ -544,9 +614,10 @@ export function groupEventsByVenue(
       if (!existing.coverImageUrl && ev.imageUrl) {
         existing.coverImageUrl = ev.imageUrl;
       }
+      existing.distanceKm = Math.min(existing.distanceKm, ev.distanceKm);
       existing.totalHeat = Math.min(
         2.5,
-        existing.totalHeat + ev.heatWeight * 0.55
+        existing.totalHeat + ev.heatWeight * 0.45
       );
     }
   }

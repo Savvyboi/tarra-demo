@@ -59,6 +59,13 @@ dialog::backdrop {
   }
 }
 
+/* Modern Web Guidance: defer-rendering-heavy-content
+   Applied strictly to off-screen event cards (index >= 8) in the List View */
+.event-card-deferred {
+  content-visibility: auto;
+  contain-intrinsic-size: auto none auto 210px;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

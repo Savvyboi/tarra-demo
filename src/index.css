@@ -10,6 +10,55 @@ dialog::backdrop {
   overscroll-behavior: contain;
 }
 
+/* Modern Web Guidance: animate-to-from-top-layer */
+dialog {
+  opacity: 0;
+  transform: scale(0.94);
+  transition-property: opacity, transform, overlay, display;
+  transition-duration: 0.24s;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-behavior: allow-discrete;
+}
+
+dialog::backdrop {
+  background-color: rgb(2 6 23 / 0);
+  transition-property: background-color, overlay, display;
+  transition-duration: 0.24s;
+  transition-timing-function: ease-out;
+  transition-behavior: allow-discrete;
+}
+
+:is(dialog[open]):where(:not([data-closing])) {
+  opacity: 1;
+  transform: scale(1);
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+
+  &::backdrop {
+    background-color: rgb(2 6 23 / 0.8);
+
+    @starting-style {
+      background-color: rgb(2 6 23 / 0);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  dialog {
+    transform: none;
+    transition-duration: 0.1s;
+  }
+
+  @starting-style {
+    :is(dialog[open]):where(:not([data-closing])) {
+      transform: none;
+    }
+  }
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

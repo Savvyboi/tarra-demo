@@ -6,7 +6,7 @@ export type LocalizedString = {
 
 export type CityId = 'helsinki' | 'espoo' | 'vantaa' | 'turku' | 'tampere' | 'oulu';
 
-export type TimeFilter = 'all' | 'live' | 'tonight' | 'weekend';
+export type TimeFilter = 'all' | 'live' | 'tonight' | 'weekend' | 'custom-date';
 
 export type TopicCategory =
   | 'all'
@@ -96,6 +96,7 @@ export interface RawLinkedEvent {
   /** Optional relative offset metadata used in static demo feeds for dynamic date anchoring */
   _demo_offset_hours?: number;
   _demo_duration_hours?: number;
+  _demo_day_offset?: number;
   '@id'?: string;
   '@context'?: string;
   '@type'?: string;
@@ -128,6 +129,8 @@ export interface NormalizedEvent {
   descriptionHtml: string;
   startTime: Date;
   endTime: Date;
+  /** Local YYYY-MM-DD key for fast calendar matching */
+  dateKey: string;
   isLiveNow: boolean;
   isStartingSoon: boolean;
   isTonight: boolean;

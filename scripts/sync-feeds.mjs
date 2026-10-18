@@ -33,10 +33,12 @@ function buildLinkedEvent({
   infoUrl,
   offsetHours,
   durationHours,
+  dayOffset = 0,
 }) {
   const now = new Date();
-  const startTime = isoWithOffsetHours(offsetHours, now);
-  const endTime = isoWithOffsetHours(offsetHours + durationHours, now);
+  const totalOffsetHours = dayOffset * 24 + offsetHours;
+  const startTime = isoWithOffsetHours(totalOffsetHours, now);
+  const endTime = isoWithOffsetHours(totalOffsetHours + durationHours, now);
 
   return {
     id,
@@ -48,6 +50,7 @@ function buildLinkedEvent({
     publisher: `6aika:${cityId}`,
     _demo_offset_hours: offsetHours,
     _demo_duration_hours: durationHours,
+    _demo_day_offset: dayOffset,
     name: {
       fi: titleFi,
       en: titleEn,
@@ -136,9 +139,9 @@ function buildLinkedEvent({
   };
 }
 
-const CITY_FEEDS = {
+const BASE_CITY_TEMPLATES = {
   turku: [
-    buildLinkedEvent({
+    {
       id: 'turku:logomo-aurora-sessions',
       cityId: 'turku',
       titleFi: 'Logomo Electronic & Visual Night: Aurora Synth',
@@ -162,8 +165,9 @@ const CITY_FEEDS = {
       infoUrl: 'https://logomo.fi',
       offsetHours: -0.5,
       durationHours: 4,
-    }),
-    buildLinkedEvent({
+      dayOffset: 0,
+    },
+    {
       id: 'turku:logomo-design-pop',
       cityId: 'turku',
       titleFi: 'Archipelago Creative Tech & Design Expo',
@@ -187,8 +191,9 @@ const CITY_FEEDS = {
       infoUrl: 'https://logomo.fi',
       offsetHours: 1.5,
       durationHours: 3.5,
-    }),
-    buildLinkedEvent({
+      dayOffset: 0,
+    },
+    {
       id: 'turku:teatteri-riverfront-gala',
       cityId: 'turku',
       titleFi: 'Turun Kaupunginteatteri: Aurajoen Yö -ensi-ilta',
@@ -212,8 +217,9 @@ const CITY_FEEDS = {
       infoUrl: 'https://tkteatteri.fi',
       offsetHours: -0.25,
       durationHours: 3,
-    }),
-    buildLinkedEvent({
+      dayOffset: 0,
+    },
+    {
       id: 'turku:kirjasto-jazz-courtyard',
       cityId: 'turku',
       titleFi: 'Pääkirjaston Valopiha Acoustic & Poetry Jam',
@@ -237,8 +243,9 @@ const CITY_FEEDS = {
       infoUrl: 'https://www.turku.fi/kirjasto',
       offsetHours: -1.0,
       durationHours: 2.5,
-    }),
-    buildLinkedEvent({
+      dayOffset: 0,
+    },
+    {
       id: 'turku:kupittaa-sunset-run',
       cityId: 'turku',
       titleFi: 'Kupittaanpuisto Neon Night Run & Park Yoga',
@@ -262,8 +269,9 @@ const CITY_FEEDS = {
       infoUrl: 'https://www.turku.fi/liikunta',
       offsetHours: 0.25,
       durationHours: 2.5,
-    }),
-    buildLinkedEvent({
+      dayOffset: 0,
+    },
+    {
       id: 'turku:kupittaa-family-adventure',
       cityId: 'turku',
       titleFi: 'Seikkailupuiston Valoseikkailu Perheille',
@@ -285,10 +293,11 @@ const CITY_FEEDS = {
       isFree: true,
       price: '0 €',
       infoUrl: 'https://www.turku.fi/seikkailupuisto',
-      offsetHours: 22,
+      offsetHours: 2.0,
       durationHours: 4,
-    }),
-    buildLinkedEvent({
+      dayOffset: 1,
+    },
+    {
       id: 'turku:aurajoki-street-food',
       cityId: 'turku',
       titleFi: 'Aurajoen Yömarkkinat & Saaristolaisruokajuhla',
@@ -312,11 +321,12 @@ const CITY_FEEDS = {
       infoUrl: 'https://visitturku.fi',
       offsetHours: -0.75,
       durationHours: 4.5,
-    }),
+      dayOffset: 0,
+    },
   ],
 
   tampere: [
-    buildLinkedEvent({
+    {
       id: 'tampere:nokia-arena-hockey-showdown',
       cityId: 'tampere',
       titleFi: 'Nokia Arena Live: Liiga-huippuottelu & Valoshow',
@@ -340,8 +350,9 @@ const CITY_FEEDS = {
       infoUrl: 'https://nokiaarena.fi',
       offsetHours: -0.5,
       durationHours: 3.5,
-    }),
-    buildLinkedEvent({
+      dayOffset: 0,
+    },
+    {
       id: 'tampere:nokia-arena-afterglow',
       cityId: 'tampere',
       titleFi: 'Arena Rooftop Lounge & Indie Club Night',
@@ -365,8 +376,9 @@ const CITY_FEEDS = {
       infoUrl: 'https://nokiaarena.fi',
       offsetHours: 2.0,
       durationHours: 4.0,
-    }),
-    buildLinkedEvent({
+      dayOffset: 0,
+    },
+    {
       id: 'tampere:tamperetalo-symphony-cinema',
       cityId: 'tampere',
       titleFi: 'Tampere-talo: Pelimusiikin Sinfonia & Valokonsertti',
@@ -390,8 +402,9 @@ const CITY_FEEDS = {
       infoUrl: 'https://tampere-talo.fi',
       offsetHours: -0.25,
       durationHours: 3.0,
-    }),
-    buildLinkedEvent({
+      dayOffset: 0,
+    },
+    {
       id: 'tampere:tamperetalo-moomin-atelier',
       cityId: 'tampere',
       titleFi: 'Muumimuseon Iltatyöpaja: Tove Janssonin Viiva ja Valo',
@@ -413,10 +426,11 @@ const CITY_FEEDS = {
       isFree: false,
       price: '14,50 €',
       infoUrl: 'https://muumimuseo.fi',
-      offsetHours: 18.0,
+      offsetHours: 1.0,
       durationHours: 3.5,
-    }),
-    buildLinkedEvent({
+      dayOffset: 1,
+    },
+    {
       id: 'tampere:metso-architecture-talk',
       cityId: 'tampere',
       titleFi: 'Pääkirjasto Metso: Raili & Reima Pietilän Arkkitehtuuri-ilta + Vinyl Lounge',
@@ -440,8 +454,9 @@ const CITY_FEEDS = {
       infoUrl: 'https://www.tampere.fi/kirjastot',
       offsetHours: -0.8,
       durationHours: 2.5,
-    }),
-    buildLinkedEvent({
+      dayOffset: 0,
+    },
+    {
       id: 'tampere:keskustori-light-market',
       cityId: 'tampere',
       titleFi: 'Keskustorin Valogalleria & Tammerkosken Street Food',
@@ -465,11 +480,12 @@ const CITY_FEEDS = {
       infoUrl: 'https://visittampere.fi',
       offsetHours: -0.4,
       durationHours: 4.5,
-    }),
+      dayOffset: 0,
+    },
   ],
 
   oulu: [
-    buildLinkedEvent({
+    {
       id: 'oulu:teatteri-northern-opera',
       cityId: 'oulu',
       titleFi: 'Oulun Teatteri: Pohjoisen Taivaan Alla -näytös',
@@ -493,8 +509,9 @@ const CITY_FEEDS = {
       infoUrl: 'https://teatteri.ouka.fi',
       offsetHours: -0.5,
       durationHours: 3.0,
-    }),
-    buildLinkedEvent({
+      dayOffset: 0,
+    },
+    {
       id: 'oulu:valve-indie-film-and-beats',
       cityId: 'oulu',
       titleFi: 'Kulttuuritalo Valve: Arctic Lens -lyhytelokuvailta & DJ-klubi',
@@ -518,8 +535,9 @@ const CITY_FEEDS = {
       infoUrl: 'https://www.kulttuurivalve.fi',
       offsetHours: -0.75,
       durationHours: 3.5,
-    }),
-    buildLinkedEvent({
+      dayOffset: 0,
+    },
+    {
       id: 'oulu:valve-air-guitar-workshop',
       cityId: 'oulu',
       titleFi: 'Ilmakitaran ja Lavakarismatyöpaja @ Valve',
@@ -543,8 +561,9 @@ const CITY_FEEDS = {
       infoUrl: 'https://www.kulttuurivalve.fi',
       offsetHours: 1.5,
       durationHours: 2.5,
-    }),
-    buildLinkedEvent({
+      dayOffset: 0,
+    },
+    {
       id: 'oulu:ouluhalli-arctic-futsal-climb',
       cityId: 'oulu',
       titleFi: 'Ouluhalli Action Night: Yökiipeily & Arctic Street Hoops',
@@ -568,8 +587,9 @@ const CITY_FEEDS = {
       infoUrl: 'https://www.ouka.fi/ouluhalli',
       offsetHours: -0.25,
       durationHours: 3.0,
-    }),
-    buildLinkedEvent({
+      dayOffset: 0,
+    },
+    {
       id: 'oulu:nallikari-aurora-bonfire',
       cityId: 'oulu',
       titleFi: 'Nallikarin Majakka: Revontulivaellus & Rantatulistelut',
@@ -593,12 +613,38 @@ const CITY_FEEDS = {
       infoUrl: 'https://nallikari.fi',
       offsetHours: -0.6,
       durationHours: 3.5,
-    }),
+      dayOffset: 0,
+    },
   ],
 };
 
+function expandMultiDaySchedule(templates) {
+  const expanded = [];
+  // Include today's core events (dayOffset = 0 / 1) plus recurring sessions across the next 21 days
+  for (const tpl of templates) {
+    expanded.push(buildLinkedEvent(tpl));
+  }
+
+  const futureDayOffsets = [1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 15, 18, 21];
+  futureDayOffsets.forEach((dayOffset, dIdx) => {
+    const subset = templates.filter((_, idx) => (idx + dIdx) % 2 === 0);
+    for (const tpl of subset) {
+      expanded.push(
+        buildLinkedEvent({
+          ...tpl,
+          id: `${tpl.id}-day-${dayOffset}`,
+          dayOffset,
+          offsetHours: ((dIdx % 3) - 1) * 2,
+        })
+      );
+    }
+  });
+
+  return expanded;
+}
+
 async function fetchCapitalFallback(cityId) {
-  const url = `https://api.hel.fi/linkedevents/v1/event/?division=${cityId}&include=location,keywords&start=now&sort=end_time&page_size=25`;
+  const url = `https://api.hel.fi/linkedevents/v1/event/?division=${cityId}&include=location,keywords&start=now&sort=end_time&page_size=40`;
   try {
     const res = await fetch(url, { headers: { Accept: 'application/json' } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -615,7 +661,8 @@ async function fetchCapitalFallback(cityId) {
 async function main() {
   await fs.mkdir(FEEDS_DIR, { recursive: true });
 
-  for (const [cityId, events] of Object.entries(CITY_FEEDS)) {
+  for (const [cityId, templates] of Object.entries(BASE_CITY_TEMPLATES)) {
+    const events = expandMultiDaySchedule(templates);
     const payload = {
       meta: {
         count: events.length,
@@ -628,7 +675,7 @@ async function main() {
     };
     const outPath = path.join(FEEDS_DIR, `${cityId}.json`);
     await fs.writeFile(outPath, JSON.stringify(payload, null, 2), 'utf8');
-    console.log(`[sync-feeds] Wrote ${events.length} LinkedEvent records -> public/feeds/${cityId}.json`);
+    console.log(`[sync-feeds] Wrote ${events.length} multi-day LinkedEvent records -> public/feeds/${cityId}.json`);
   }
 
   for (const capitalCity of ['helsinki', 'espoo', 'vantaa']) {

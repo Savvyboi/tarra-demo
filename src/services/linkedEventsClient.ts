@@ -8,16 +8,22 @@ import {
   VenueStoryGroup,
 } from '../types/linkedEvents';
 import {
+  doesEventOccurOnDate,
+  parseDateKey,
+  toDateKey,
+} from '../utils/calendarUtils';
+import {
   buildLicenseAttribution,
   getSafeEventImageUrl,
   pickLocalizedText,
 } from '../utils/licenseGuard';
 
-const DB_NAME = 'snapevents_linkedevents_cache_v1';
+const DB_NAME = 'snapevents_linkedevents_cache_v2';
 const STORE_NAME = 'city_feeds';
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 interface CachedFeedRecord {
+  cacheKey: string;
   cityId: CityId;
   timestamp: number;
   source: 'live-api' | 'static-feed' | 'offline-fallback';
@@ -34,7 +40,7 @@ function openCacheDb(): Promise<IDBDatabase> {
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'cityId' });
+        db.createObjectStore(STORE_NAME, { keyPath: 'cacheKey' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -42,13 +48,15 @@ function openCacheDb(): Promise<IDBDatabase> {
   });
 }
 
-async function readCachedFeed(cityId: CityId): Promise<CachedFeedRecord | null> {
+async function readCachedFeed(
+  cacheKey: string
+): Promise<CachedFeedRecord | null> {
   try {
     const db = await openCacheDb();
     return await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
-      const req = store.get(cityId);
+      const req = store.get(cacheKey);
       req.onsuccess = () => {
         const record = req.result as CachedFeedRecord | undefined;
         if (!record) {
@@ -172,7 +180,6 @@ export function normalizeLinkedEvent(
   ) {
     validCoords = [coords[0], coords[1]];
   } else {
-    // Deterministic slight jitter around city center if venue coordinates are missing
     const base = CITIES[cityId].coordinates;
     const angle = (index * 137.5 * Math.PI) / 180;
     const radius = 0.004 + (index % 5) * 0.0025;
@@ -188,12 +195,17 @@ export function normalizeLinkedEvent(
 
   // Dynamic Date Shifting for Demo Reliability on static feeds (Turku, Tampere, Oulu)
   if (typeof raw._demo_offset_hours === 'number') {
+    const dayOffset =
+      typeof raw._demo_day_offset === 'number' ? raw._demo_day_offset : 0;
     const durationHours =
       typeof raw._demo_duration_hours === 'number' ? raw._demo_duration_hours : 3;
-    startTime = new Date(now.getTime() + raw._demo_offset_hours * 3600 * 1000);
+    const totalOffsetMs = (dayOffset * 24 + raw._demo_offset_hours) * 3600 * 1000;
+    startTime = new Date(now.getTime() + totalOffsetMs);
     endTime = new Date(startTime.getTime() + durationHours * 3600 * 1000);
   } else {
-    startTime = raw.start_time ? new Date(raw.start_time) : new Date(now.getTime() - 1800 * 1000);
+    startTime = raw.start_time
+      ? new Date(raw.start_time)
+      : new Date(now.getTime() - 1800 * 1000);
     if (Number.isNaN(startTime.getTime())) {
       startTime = new Date();
     }
@@ -204,31 +216,40 @@ export function normalizeLinkedEvent(
       endTime = new Date(startTime.getTime() + 2.5 * 3600 * 1000);
     }
 
-    // For live Capital Region events: if an event is a multi-week exhibition (duration > 72h),
-    // anchor its daily session window around today so it integrates cleanly with Tonight/Live filters
-    const durationHours = (endTime.getTime() - startTime.getTime()) / (3600 * 1000);
+    // For live Capital Region events that are multi-week ongoing exhibitions (duration > 72h),
+    // anchor their daily session time across upcoming days so they populate both today and calendar days cleanly
+    const durationHours =
+      (endTime.getTime() - startTime.getTime()) / (3600 * 1000);
     if (durationHours > 72 && startTime <= now && endTime >= now) {
-      const slotOffsetHours = ((index % 5) - 2) * 0.75; // spreads ongoing exhibitions across live/tonight
-      startTime = new Date(now.getTime() + slotOffsetHours * 3600 * 1000);
+      const daySpread = index % 6; // 0..5 days out
+      const slotOffsetHours = ((index % 5) - 2) * 0.75;
+      startTime = new Date(
+        now.getTime() + (daySpread * 24 + slotOffsetHours) * 3600 * 1000
+      );
       endTime = new Date(startTime.getTime() + 3.5 * 3600 * 1000);
     }
   }
 
-  const diffFromStartHours = (now.getTime() - startTime.getTime()) / (3600 * 1000);
-  const diffUntilStartHours = (startTime.getTime() - now.getTime()) / (3600 * 1000);
+  const diffFromStartHours =
+    (now.getTime() - startTime.getTime()) / (3600 * 1000);
+  const diffUntilStartHours =
+    (startTime.getTime() - now.getTime()) / (3600 * 1000);
 
   const isLiveNow = now >= startTime && now <= endTime;
-  const isStartingSoon = !isLiveNow && diffUntilStartHours > 0 && diffUntilStartHours <= 3;
+  const isStartingSoon =
+    !isLiveNow && diffUntilStartHours > 0 && diffUntilStartHours <= 3;
 
-  // Tonight: either live right now, starting within the next 14 hours, or occurring on the same calendar date
   const isSameDay =
     startTime.getFullYear() === now.getFullYear() &&
     startTime.getMonth() === now.getMonth() &&
     startTime.getDate() === now.getDate();
   const isTonight =
-    isLiveNow || isStartingSoon || isSameDay || (diffUntilStartHours >= 0 && diffUntilStartHours <= 16);
+    isLiveNow ||
+    isStartingSoon ||
+    isSameDay ||
+    (diffUntilStartHours >= 0 && diffUntilStartHours <= 16);
 
-  const dayOfWeek = startTime.getDay(); // 0 = Sun, 5 = Fri, 6 = Sat
+  const dayOfWeek = startTime.getDay();
   const isThisWeekend =
     isLiveNow ||
     dayOfWeek === 0 ||
@@ -287,7 +308,7 @@ export function normalizeLinkedEvent(
         ? 0.65
         : diffFromStartHours < 24
           ? 0.45
-          : 0.3;
+          : 0.35;
 
   return {
     id: raw.id,
@@ -297,6 +318,7 @@ export function normalizeLinkedEvent(
     descriptionHtml,
     startTime,
     endTime,
+    dateKey: toDateKey(startTime),
     isLiveNow,
     isStartingSoon,
     isTonight,
@@ -327,14 +349,20 @@ export interface CityEventsResult {
   fetchedAt: Date;
 }
 
+/**
+ * Fetches events for a city, optionally querying a specific YYYY-MM-DD calendar date
+ * from the live 6Aika API and merging with the base schedule.
+ */
 export async function fetchCityEvents(
   cityId: CityId,
-  forceRefresh = false
+  forceRefresh = false,
+  targetDateKey: string | null = null
 ): Promise<CityEventsResult> {
   const cityConfig = CITIES[cityId];
+  const cacheKey = targetDateKey ? `${cityId}:${targetDateKey}` : cityId;
 
   if (!forceRefresh) {
-    const cached = await readCachedFeed(cityId);
+    const cached = await readCachedFeed(cacheKey);
     if (cached && Array.isArray(cached.payload?.data)) {
       const events = cached.payload.data
         .map((raw, idx) => normalizeLinkedEvent(raw, cityId, idx))
@@ -357,7 +385,11 @@ export async function fetchCityEvents(
   const staticFeedUrl = `${import.meta.env.BASE_URL}feeds/${cityId}.json`;
 
   if (cityConfig.dataMechanism === 'live-api') {
-    const liveApiUrl = `https://api.hel.fi/linkedevents/v1/event/?division=${cityId}&include=location,keywords&start=now&sort=end_time&page_size=40`;
+    const dateParams = targetDateKey
+      ? `start=${targetDateKey}&end=${targetDateKey}&sort=start_time&page_size=45`
+      : `start=now&sort=end_time&page_size=45`;
+    const liveApiUrl = `https://api.hel.fi/linkedevents/v1/event/?division=${cityId}&include=location,keywords&${dateParams}`;
+
     try {
       const response = await fetch(liveApiUrl, {
         headers: { Accept: 'application/json' },
@@ -368,6 +400,7 @@ export async function fetchCityEvents(
       const payload = (await response.json()) as LinkedEventsApiResponse;
       if (Array.isArray(payload.data) && payload.data.length > 0) {
         await writeCachedFeed({
+          cacheKey,
           cityId,
           timestamp: Date.now(),
           source: 'live-api',
@@ -376,6 +409,29 @@ export async function fetchCityEvents(
         const events = payload.data
           .map((raw, idx) => normalizeLinkedEvent(raw, cityId, idx))
           .filter((e): e is NormalizedEvent => e !== null);
+
+        // If targetDateKey was specifically queried, ensure returned multi-week events are anchored to targetDateKey
+        if (targetDateKey) {
+          const targetDay = parseDateKey(targetDateKey);
+          for (let i = 0; i < events.length; i++) {
+            const ev = events[i];
+            if (!doesEventOccurOnDate(ev, targetDateKey)) {
+              const hour = 12 + (i % 8);
+              const anchoredStart = new Date(
+                targetDay.getFullYear(),
+                targetDay.getMonth(),
+                targetDay.getDate(),
+                hour,
+                0,
+                0
+              );
+              ev.startTime = anchoredStart;
+              ev.endTime = new Date(anchoredStart.getTime() + 2.5 * 3600 * 1000);
+              ev.dateKey = targetDateKey;
+            }
+          }
+        }
+
         return {
           cityId,
           events,
@@ -400,6 +456,7 @@ export async function fetchCityEvents(
   }
   const payload = (await fallbackRes.json()) as LinkedEventsApiResponse;
   await writeCachedFeed({
+    cacheKey,
     cityId,
     timestamp: Date.now(),
     source:
@@ -412,6 +469,34 @@ export async function fetchCityEvents(
   const events = (payload.data || [])
     .map((raw, idx) => normalizeLinkedEvent(raw, cityId, idx))
     .filter((e): e is NormalizedEvent => e !== null);
+
+  // If the user picked a custom calendar date beyond the pre-generated 21-day static window,
+  // dynamically project a set of the city's events onto that date so any calendar day can be explored
+  if (
+    targetDateKey &&
+    !events.some((ev) => doesEventOccurOnDate(ev, targetDateKey))
+  ) {
+    const targetDay = parseDateKey(targetDateKey);
+    const projected = events.slice(0, 5).map((ev, idx) => {
+      const start = new Date(
+        targetDay.getFullYear(),
+        targetDay.getMonth(),
+        targetDay.getDate(),
+        14 + idx * 2,
+        0,
+        0
+      );
+      const end = new Date(start.getTime() + 3 * 3600 * 1000);
+      return {
+        ...ev,
+        id: `${ev.id}-${targetDateKey}`,
+        startTime: start,
+        endTime: end,
+        dateKey: targetDateKey,
+      };
+    });
+    events.push(...projected);
+  }
 
   return {
     cityId,
@@ -430,7 +515,6 @@ export function groupEventsByVenue(
   const map = new Map<string, VenueStoryGroup>();
 
   for (const ev of events) {
-    // Group by rounded coordinates or venueId so co-located events form a multi-segment Story Ring
     const coordKey = `${ev.coordinates[0].toFixed(4)},${ev.coordinates[1].toFixed(4)}`;
     const groupKey = `${ev.cityId}:${ev.venueId}:${coordKey}`;
 
@@ -451,17 +535,22 @@ export function groupEventsByVenue(
         totalHeat: ev.heatWeight,
       });
     } else {
-      existing.events.push(ev);
+      // Avoid duplicate event IDs at the same venue
+      if (!existing.events.some((e) => e.id === ev.id)) {
+        existing.events.push(ev);
+      }
       existing.hasLiveEvent = existing.hasLiveEvent || ev.isLiveNow;
       existing.hasStartingSoon = existing.hasStartingSoon || ev.isStartingSoon;
       if (!existing.coverImageUrl && ev.imageUrl) {
         existing.coverImageUrl = ev.imageUrl;
       }
-      existing.totalHeat = Math.min(2.5, existing.totalHeat + ev.heatWeight * 0.55);
+      existing.totalHeat = Math.min(
+        2.5,
+        existing.totalHeat + ev.heatWeight * 0.55
+      );
     }
   }
 
-  // Sort events inside each venue group: Live Now first, then soonest startTime
   for (const group of map.values()) {
     group.events.sort((a, b) => {
       if (a.isLiveNow !== b.isLiveNow) return a.isLiveNow ? -1 : 1;

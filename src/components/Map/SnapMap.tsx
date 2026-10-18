@@ -35,15 +35,34 @@ const STYLE_URLS: Record<MapStyleId, string> = {
   daylight: 'https://tiles.openfreemap.org/styles/positron',
 };
 
-const CATEGORY_RING_COLORS: Record<string, string> = {
-  music: '#f43f5e',
-  culture: '#a855f7',
-  sports: '#10b981',
-  family: '#f59e0b',
-  food: '#fb923c',
-  nightlife: '#ec4899',
-  nature: '#22c55e',
+const CATEGORY_SLAP_COLORS: Record<string, { bg: string; text: string }> = {
+  music: { bg: '#ff2a85', text: '#ffffff' },
+  culture: { bg: '#f4f1ea', text: '#0d0e11' },
+  sports: { bg: '#22c55e', text: '#0d0e11' },
+  family: { bg: '#ffe600', text: '#0d0e11' },
+  food: { bg: '#ff5500', text: '#ffffff' },
+  nightlife: { bg: '#38bdf8', text: '#0d0e11' },
+  nature: { bg: '#a3e635', text: '#0d0e11' },
 };
+
+const STICKER_ANGLES = [-2.4, 1.8, -1.3, 2.2, -1.9, 1.4, -0.8, 2.5];
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getStickerAngle(id: string): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return STICKER_ANGLES[Math.abs(hash) % STICKER_ANGLES.length];
+}
 
 export const SnapMap: React.FC<SnapMapProps> = ({
   activeCity,
@@ -87,28 +106,28 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     };
   }, [venueGroups]);
 
-  // Apply custom Snap style layers (Thermal Heatmap + 3D Extruded Buildings + Nordic Neon tinting)
+  // Apply custom tarra street-metal style layers (Heatmap + 3D Buildings + Steel/Asphalt tinting)
   const syncCustomLayers = useCallback(
     (map: maplibregl.Map) => {
       if (!map.isStyleLoaded()) return;
 
-      // 1. Apply Nordic Neon / Snap Midnight color customization to base layers
+      // 1. Apply Industrial Steel / Dark Asphalt tinting to base layers
       const style = map.getStyle();
       if (style?.layers) {
         for (const layer of style.layers) {
           try {
             if (layer.type === 'background') {
               if (mapStyle === 'neon') {
-                map.setPaintProperty(layer.id, 'background-color', '#050816');
+                map.setPaintProperty(layer.id, 'background-color', '#14171c');
               } else if (mapStyle === 'midnight') {
-                map.setPaintProperty(layer.id, 'background-color', '#090d16');
+                map.setPaintProperty(layer.id, 'background-color', '#0c0e11');
               }
             }
             if (layer.id.includes('water') && layer.type === 'fill') {
               if (mapStyle === 'neon') {
-                map.setPaintProperty(layer.id, 'fill-color', '#081b33');
+                map.setPaintProperty(layer.id, 'fill-color', '#0d1824');
               } else if (mapStyle === 'midnight') {
-                map.setPaintProperty(layer.id, 'fill-color', '#0b1526');
+                map.setPaintProperty(layer.id, 'fill-color', '#080d14');
               }
             }
           } catch {
@@ -117,7 +136,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
         }
       }
 
-      // 2. Add or update GPU Thermal Heatmap source & layer
+      // 2. Add or update GPU Heatmap source & layer
       const heatGeoJson = buildHeatmapGeoJson();
       const existingSource = map.getSource('snapevents-heat') as
         | maplibregl.GeoJSONSource
@@ -158,60 +177,41 @@ export const SnapMap: React.FC<SnapMapProps> = ({
               ['linear'],
               ['zoom'],
               9,
-              1.1,
+              1.0,
               13,
-              1.8,
+              1.6,
               16,
-              2.6,
+              2.3,
             ],
-            'heatmap-color':
-              mapStyle === 'neon'
-                ? [
-                    'interpolate',
-                    ['linear'],
-                    ['heatmap-density'],
-                    0,
-                    'rgba(0, 0, 0, 0)',
-                    0.15,
-                    'rgba(6, 182, 212, 0.28)',
-                    0.4,
-                    'rgba(59, 130, 246, 0.52)',
-                    0.65,
-                    'rgba(217, 70, 239, 0.72)',
-                    0.85,
-                    'rgba(244, 63, 94, 0.88)',
-                    1,
-                    'rgba(250, 204, 21, 0.98)',
-                  ]
-                : [
-                    'interpolate',
-                    ['linear'],
-                    ['heatmap-density'],
-                    0,
-                    'rgba(0, 0, 0, 0)',
-                    0.18,
-                    'rgba(16, 185, 129, 0.25)',
-                    0.42,
-                    'rgba(34, 211, 238, 0.50)',
-                    0.68,
-                    'rgba(250, 204, 21, 0.74)',
-                    0.88,
-                    'rgba(249, 115, 22, 0.88)',
-                    1,
-                    'rgba(239, 68, 68, 0.96)',
-                  ],
+            'heatmap-color': [
+              'interpolate',
+              ['linear'],
+              ['heatmap-density'],
+              0,
+              'rgba(0, 0, 0, 0)',
+              0.2,
+              'rgba(255, 85, 0, 0.22)',
+              0.45,
+              'rgba(255, 42, 133, 0.42)',
+              0.72,
+              'rgba(255, 145, 0, 0.68)',
+              0.9,
+              'rgba(255, 230, 0, 0.85)',
+              1,
+              'rgba(255, 255, 255, 0.95)',
+            ],
             'heatmap-radius': [
               'interpolate',
               ['linear'],
               ['zoom'],
               9,
-              32,
+              28,
               13,
-              64,
+              54,
               16,
-              96,
+              82,
             ],
-            'heatmap-opacity': showHeatmap ? 0.86 : 0,
+            'heatmap-opacity': showHeatmap ? 0.72 : 0,
           },
         });
       } else {
@@ -244,8 +244,8 @@ export const SnapMap: React.FC<SnapMapProps> = ({
                 mapStyle === 'daylight'
                   ? '#cbd5e1'
                   : mapStyle === 'neon'
-                    ? '#1e1b4b'
-                    : '#1e293b',
+                    ? '#232832'
+                    : '#1a1e24',
               'fill-extrusion-height': [
                 'coalesce',
                 ['get', 'render_height'],
@@ -258,7 +258,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
                 ['get', 'min_height'],
                 0,
               ],
-              'fill-extrusion-opacity': 0.72,
+              'fill-extrusion-opacity': 0.76,
             },
           });
         } catch {
@@ -280,12 +280,16 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     if (!containerRef.current || mapRef.current) return;
 
     const initialCity = CITIES[activeCity];
+    const startCenter = focusCoordinates || initialCity.coordinates;
+    const startZoom = focusCoordinates ? 15.6 : initialCity.defaultZoom;
+    const startPitch = focusCoordinates ? 55 : initialCity.pitch;
+
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: STYLE_URLS[mapStyle],
-      center: initialCity.coordinates,
-      zoom: initialCity.defaultZoom,
-      pitch: initialCity.pitch,
+      center: startCenter,
+      zoom: startZoom,
+      pitch: startPitch,
       bearing: initialCity.bearing,
       maxPitch: 70,
       attributionControl: false,
@@ -296,7 +300,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
         visualizePitch: true,
         showCompass: true,
       }),
-      'bottom-right'
+      'top-right'
     );
 
     const handleMove = () => setViewTick((t) => t + 1);
@@ -305,8 +309,14 @@ export const SnapMap: React.FC<SnapMapProps> = ({
       syncCustomLayers(map);
       handleMove();
     });
-    map.on('styledata', () => {
+    map.on('style.load', () => {
       syncCustomLayers(map);
+      handleMove();
+    });
+    map.on('styledata', () => {
+      if (map.isStyleLoaded()) {
+        syncCustomLayers(map);
+      }
     });
     map.on('moveend', handleMove);
     map.on('zoomend', handleMove);
@@ -322,22 +332,26 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fly smoothly when activeCity changes
+  // Fly smoothly ONLY when activeCity actually changes after mount
+  const prevCityRef = useRef<CityId>(activeCity);
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    if (prevCityRef.current === activeCity) return;
+    prevCityRef.current = activeCity;
+
     const target = CITIES[activeCity];
     map.flyTo({
       center: target.coordinates,
       zoom: target.defaultZoom,
       pitch: target.pitch,
       bearing: target.bearing,
-      duration: 1500,
+      duration: 1400,
       essential: true,
     });
   }, [activeCity]);
 
-  // Fly directly to a specific venue when "Show on Map" is clicked in List View
+  // Fly directly to a specific venue when "Show on Map" is clicked in Pole Feed View
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !focusCoordinates) return;
@@ -345,7 +359,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
       center: focusCoordinates,
       zoom: 15.8,
       pitch: 56,
-      duration: 1200,
+      duration: 1100,
       essential: true,
     });
   }, [focusCoordinates]);
@@ -370,7 +384,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     syncCustomLayers(map);
   }, [venueGroups, showHeatmap, show3DBuildings, mapReady, syncCustomLayers]);
 
-  // Render "Near Me" user location marker & fly to user when requested
+  // Render "Near Me" user location sticker marker & fly to user when requested
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -382,11 +396,13 @@ export const SnapMap: React.FC<SnapMapProps> = ({
 
     if (userLocation) {
       const el = document.createElement('div');
-      el.className = 'snapevents-user-marker';
+      el.className = 'tarra-user-marker';
       el.innerHTML = `
-        <div class="relative flex items-center justify-center w-8 h-8">
-          <span class="absolute inset-0 rounded-full bg-cyan-400/50 animate-ping"></span>
-          <span class="relative w-4 h-4 rounded-full bg-cyan-400 border-2 border-white shadow-lg shadow-cyan-400/60"></span>
+        <div class="relative flex items-center justify-center">
+          <span class="absolute -inset-2 rounded-full bg-[#ffe600]/45 animate-ping"></span>
+          <div class="relative px-2 py-0.5 bg-[#ffe600] text-[#0d0e11] border-2 border-[#0d0e11] outline-2 outline-[#f4f1ea] shadow-[2px_3px_0px_#07080a] font-mono-stamp text-[10px] font-bold uppercase tracking-tighter">
+            📍 YOU
+          </div>
         </div>
       `;
       userMarkerRef.current = new maplibregl.Marker({ element: el })
@@ -396,8 +412,8 @@ export const SnapMap: React.FC<SnapMapProps> = ({
       map.flyTo({
         center: userLocation,
         zoom: 14.2,
-        pitch: 55,
-        duration: 1400,
+        pitch: 52,
+        duration: 1300,
         essential: true,
       });
     }
@@ -406,7 +422,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
   // Rebuild Supercluster index when venueGroups change
   useEffect(() => {
     const supercluster = new Supercluster<ClusterProps, ClusterProps>({
-      radius: 46,
+      radius: 48,
       maxZoom: 15,
       map: (props) => ({
         hasLive: props.venueGroup?.hasLiveEvent ? 1 : 0,
@@ -435,7 +451,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     setViewTick((t) => t + 1);
   }, [venueGroups]);
 
-  // Render Supercluster + Venue Story Bubble DOM Markers
+  // Render Supercluster + Die-Cut Street Sticker DOM Markers
   useEffect(() => {
     const map = mapRef.current;
     const supercluster = clusterIndexRef.current;
@@ -466,6 +482,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
       const [lon, lat] = feature.geometry.coordinates;
       const props = feature.properties;
 
+      // 1. CLUSTER MARKER: Stacked Pile of Street Stickers
       if (props.cluster && typeof props.cluster_id === 'number') {
         const count = props.point_count || 0;
         const hasLiveCount = props.hasLive || 0;
@@ -473,24 +490,22 @@ export const SnapMap: React.FC<SnapMapProps> = ({
         clusterEl.type = 'button';
         clusterEl.setAttribute(
           'aria-label',
-          `Event cluster with ${count} venues. Click to zoom in.`
+          `Sticker cluster with ${count} venues. Click to zoom in.`
         );
         clusterEl.className =
-          'group relative flex items-center justify-center cursor-pointer focus:outline-none';
+          'group relative flex items-center justify-center cursor-pointer focus:outline-none select-none';
 
         clusterEl.innerHTML = `
-          <div class="relative flex items-center justify-center w-14 h-14 transition-transform duration-200 group-hover:scale-110">
-            ${
-              hasLiveCount > 0
-                ? `<span class="absolute inset-0 rounded-full bg-gradient-to-tr from-rose-500 via-fuchsia-500 to-cyan-400 opacity-70 blur-[3px] animate-pulse"></span>`
-                : ''
-            }
-            <div class="relative flex flex-col items-center justify-center w-12 h-12 rounded-full bg-slate-900/95 border-2 ${
-              hasLiveCount > 0 ? 'border-cyan-400' : 'border-slate-500'
-            } text-white shadow-xl backdrop-blur-md">
-              <span class="text-xs font-extrabold tracking-tight leading-none">${count}</span>
-              <span class="text-[9px] font-semibold uppercase tracking-wider text-cyan-300 mt-0.5">${
-                hasLiveCount > 0 ? '🔥 LIVE' : 'spots'
+          <div class="relative flex items-center justify-center w-14 h-14 transition-transform duration-150 group-hover:scale-110">
+            <!-- Back sticker in stack -->
+            <div class="absolute w-12 h-12 -translate-x-1 -translate-y-1 rounded-md bg-[#ffe600] border-2 border-[#0d0e11] shadow-[2px_3px_0px_#07080a] rotate-12"></div>
+            <!-- Middle sticker in stack -->
+            <div class="absolute w-12 h-12 translate-x-1 translate-y-1 rounded-md bg-[#ff2a85] border-2 border-[#f4f1ea] shadow-[2px_3px_0px_#07080a] -rotate-12"></div>
+            <!-- Front count slap -->
+            <div class="relative flex flex-col items-center justify-center w-12 h-12 rounded-md bg-[#121418] border-[2.5px] border-[#f4f1ea] text-[#f4f1ea] shadow-[3px_4px_0px_#07080a]">
+              <span class="font-display-slap text-sm leading-none text-[#ffe600]">${count}</span>
+              <span class="font-mono-stamp text-[9px] font-bold uppercase tracking-tighter text-[#f4f1ea] mt-0.5">${
+                hasLiveCount > 0 ? '🔥 LIVE' : 'SLAPS'
               }</span>
             </div>
           </div>
@@ -505,7 +520,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
           map.flyTo({
             center: [lon, lat],
             zoom: expansionZoom,
-            duration: 750,
+            duration: 700,
             essential: true,
           });
         });
@@ -520,23 +535,27 @@ export const SnapMap: React.FC<SnapMapProps> = ({
         continue;
       }
 
+      // 2. SINGLE VENUE MARKER: Die-Cut Vinyl Sticker Slap
       const vg = props.venueGroup;
       if (!vg) continue;
 
       const isSelected = vg.venueId === selectedVenueId;
-      const ringColor =
-        CATEGORY_RING_COLORS[vg.topCategory] || '#22d3ee';
+      const slapColor =
+        CATEGORY_SLAP_COLORS[vg.topCategory] || { bg: '#ffe600', text: '#0d0e11' };
       const eventCount = vg.events.length;
       const leadEvent = vg.events[0];
+      const angle = getStickerAngle(vg.venueId);
 
-      // Safe event_only image usage inside this specific event's map marker bubble
-      const thumbUrl = vg.coverImageUrl;
+      // Safe event_only image usage inside this specific event's map marker sticker
+      const thumbUrl = vg.coverImageUrl ? escapeHtml(vg.coverImageUrl) : null;
+      const safeVenueName = escapeHtml(vg.venueName);
+      const safeLeadTitle = escapeHtml(leadEvent.title);
 
       const bubbleEl = document.createElement('button');
       bubbleEl.type = 'button';
       bubbleEl.setAttribute(
         'aria-label',
-        `Open Snap Story for ${vg.venueName} (${eventCount} ${
+        `Open event sticker for ${vg.venueName} (${eventCount} ${
           eventCount === 1 ? 'event' : 'events'
         })`
       );
@@ -544,43 +563,50 @@ export const SnapMap: React.FC<SnapMapProps> = ({
         'group relative flex flex-col items-center cursor-pointer focus:outline-none select-none';
 
       bubbleEl.innerHTML = `
-        <div class="relative flex items-center justify-center transition-transform duration-200 ${
-          isSelected ? 'scale-125 z-30' : 'group-hover:scale-110'
-        }">
-          ${
-            vg.hasLiveEvent
-              ? `<span class="absolute -inset-1.5 rounded-full opacity-80 animate-ping" style="background: radial-gradient(circle, ${ringColor}66 0%, transparent 70%); animation-duration: 2.2s;"></span>`
-              : ''
-          }
-          <div class="relative w-14 h-14 rounded-full p-[3px] shadow-2xl" style="background: conic-gradient(from 180deg, ${ringColor}, #22d3ee, #ec4899, ${ringColor});">
-            <div class="relative w-full h-full rounded-full bg-slate-900 overflow-hidden flex items-center justify-center border-2 border-slate-950">
+        <div
+          class="relative flex flex-col items-center transition-transform duration-150 ${
+            isSelected ? 'scale-125 z-30' : 'group-hover:scale-110 group-hover:z-20'
+          }"
+          style="transform: rotate(${isSelected ? 0 : angle}deg);"
+        >
+          <!-- Die-Cut Square/Rounded Vinyl Sticker -->
+          <div
+            class="relative w-13 h-13 rounded-lg bg-[#f4f1ea] p-[3px] shadow-[3px_4px_0px_#07080a]"
+            style="border: 2px solid #0d0e11;"
+          >
+            <div class="relative w-full h-full rounded-[4px] bg-[#16191f] overflow-hidden flex items-center justify-center border border-[#0d0e11]">
               ${
                 thumbUrl
-                  ? `<img src="${thumbUrl}" alt="" loading="lazy" class="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />`
-                  : `<span class="text-2xl">${vg.topEmoji}</span>`
+                  ? `<img src="${thumbUrl}" alt="" loading="lazy" class="w-full h-full object-cover contrast-110 group-hover:scale-105 transition-transform" />`
+                  : `<div class="w-full h-full flex items-center justify-center text-2xl" style="background-color: ${slapColor.bg}; color: ${slapColor.text};">${vg.topEmoji}</div>`
               }
-              <div class="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent"></div>
-              <span class="absolute bottom-0.5 text-sm drop-shadow">${vg.topEmoji}</span>
+              <!-- Corner Category Stamp -->
+              <span
+                class="absolute bottom-0 right-0 px-1 py-[1px] text-[11px] leading-none border-t border-l border-[#0d0e11]"
+                style="background-color: ${slapColor.bg}; color: ${slapColor.text};"
+              >${vg.topEmoji}</span>
             </div>
+
+            ${
+              vg.hasLiveEvent
+                ? `<span class="absolute -top-2 -left-2 px-1.5 py-[1px] bg-[#ff2a85] text-white border-[1.5px] border-[#f4f1ea] shadow-[2px_2px_0px_#07080a] font-mono-stamp text-[8px] font-bold uppercase tracking-tighter">● LIVE</span>`
+                : vg.hasStartingSoon
+                  ? `<span class="absolute -top-2 -left-2 px-1.5 py-[1px] bg-[#ffe600] text-[#0d0e11] border-[1.5px] border-[#0d0e11] shadow-[2px_2px_0px_#07080a] font-mono-stamp text-[8px] font-bold uppercase tracking-tighter">SOON</span>`
+                  : ''
+            }
+
+            ${
+              eventCount > 1
+                ? `<span class="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-sm bg-[#ffe600] border-[1.5px] border-[#0d0e11] text-[#0d0e11] font-mono-stamp text-[10px] font-bold flex items-center justify-center shadow-[2px_2px_0px_#07080a]">+${eventCount}</span>`
+                : ''
+            }
           </div>
 
-          ${
-            vg.hasLiveEvent
-              ? `<span class="absolute -bottom-1.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-rose-500 to-amber-500 text-[9px] font-black uppercase tracking-wider text-white shadow-md border border-slate-950">LIVE</span>`
-              : vg.hasStartingSoon
-                ? `<span class="absolute -bottom-1.5 px-1.5 py-0.5 rounded-full bg-cyan-500 text-[9px] font-black uppercase tracking-wider text-slate-950 shadow-md border border-slate-950">SOON</span>`
-                : ''
-          }
-
-          ${
-            eventCount > 1
-              ? `<span class="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-slate-950/95 border border-cyan-400 text-cyan-300 text-[10px] font-bold flex items-center justify-center shadow-lg">+${eventCount}</span>`
-              : ''
-          }
-        </div>
-        <div class="mt-2 max-w-[136px] px-2 py-0.5 rounded-full bg-slate-950/85 border border-white/15 backdrop-blur-md shadow-lg text-center pointer-events-none">
-          <p class="text-[10px] font-semibold text-white truncate leading-tight">${vg.venueName}</p>
-          <p class="text-[9px] text-slate-300 truncate leading-tight">${leadEvent.title}</p>
+          <!-- Rectangular Street-Sign / Slap Label underneath -->
+          <div class="mt-1 max-w-[142px] px-2 py-0.5 bg-[#111317] border-[1.5px] border-[#f4f1ea] shadow-[2px_3px_0px_#07080a] text-left pointer-events-none">
+            <p class="font-grotesk text-[10px] font-bold uppercase tracking-tight text-[#ffe600] truncate leading-tight">${safeVenueName}</p>
+            <p class="text-[9px] font-medium text-[#f4f1ea] truncate leading-tight">${safeLeadTitle}</p>
+          </div>
         </div>
       `;
 
@@ -604,11 +630,11 @@ export const SnapMap: React.FC<SnapMapProps> = ({
       <div
         ref={containerRef}
         className="w-full h-full"
-        aria-label="Interactive 6-City SnapEvents Map"
+        aria-label="Interactive 6-City tarra Street Sticker Map"
       />
-      {/* Subtle top and bottom vignette for crisp HUD legibility */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-slate-950/80 via-slate-950/35 to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-slate-950/85 via-slate-950/35 to-transparent" />
+      {/* Subtle bottom vignette so the bottom sticker dock pops cleanly */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#0d0e11]/85 to-transparent" />
     </div>
   );
 };
+

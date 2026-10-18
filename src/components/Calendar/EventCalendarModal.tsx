@@ -1,11 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
   Flame,
   RotateCcw,
-  Sparkles,
   X,
 } from 'lucide-react';
 import { NormalizedEvent } from '../../types/linkedEvents';
@@ -41,6 +40,14 @@ export const EventCalendarModal: React.FC<EventCalendarModalProps> = ({
 
   const [viewYear, setViewYear] = useState(initialDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(initialDate.getMonth());
+
+  // Sync displayed month whenever selectedDate changes or modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    const target = selectedDate ? parseDateKey(selectedDate) : new Date();
+    setViewYear(target.getFullYear());
+    setViewMonth(target.getMonth());
+  }, [selectedDate, isOpen]);
 
   const cells = useMemo(
     () => buildMonthGrid(viewYear, viewMonth, events),
@@ -94,7 +101,7 @@ export const EventCalendarModal: React.FC<EventCalendarModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0a0c0e]/80 backdrop-blur-sm animate-fade-in"
       onClick={onClose}
     >
       <div
@@ -102,20 +109,20 @@ export const EventCalendarModal: React.FC<EventCalendarModalProps> = ({
         aria-modal="true"
         aria-label={`Event Calendar for ${cityName}`}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-3xl bg-slate-900/95 border border-white/15 shadow-[0_0_60px_rgba(0,0,0,0.85)] p-5 text-white space-y-4"
+        className="w-full max-w-md rounded-xl bg-[#16191f] border-[3px] border-[#f4f1ea] shadow-[6px_8px_0px_#07080a] p-5 text-[#f4f1ea] space-y-4"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+        <div className="flex items-center justify-between border-b-2 border-[#f4f1ea]/20 pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-cyan-400 to-fuchsia-500 text-slate-950 flex items-center justify-center shadow">
+            <div className="w-9 h-9 rounded-md bg-[#ffe600] text-[#0d0e11] border-2 border-[#0d0e11] shadow-[2px_2px_0px_#07080a] flex items-center justify-center">
               <CalendarIcon className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-extrabold tracking-tight">
-                {cityName} Event Calendar
+              <h2 className="text-sm font-extrabold uppercase tracking-tight">
+                {cityName} Date Slap Calendar
               </h2>
-              <p className="text-[11px] text-slate-400">
-                Pick any date to filter or fetch live 6Aika events for that day
+              <p className="text-[11px] text-[#b8b4a8]">
+                Pick any date to filter or fetch 6Aika events for that day
               </p>
             </div>
           </div>
@@ -123,7 +130,7 @@ export const EventCalendarModal: React.FC<EventCalendarModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close calendar"
-            className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 cursor-pointer"
+            className="p-1.5 rounded-md bg-[#ffe600] hover:bg-[#fff04d] text-[#0d0e11] border border-[#0d0e11] cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -134,21 +141,21 @@ export const EventCalendarModal: React.FC<EventCalendarModalProps> = ({
           <button
             type="button"
             onClick={() => handleQuickPick(0)}
-            className="px-2.5 py-1 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 text-xs font-bold cursor-pointer"
+            className="px-2.5 py-1 rounded-md bg-[#ffe600] text-[#0d0e11] border border-[#0d0e11] shadow-[2px_2px_0px_#07080a] text-xs font-bold uppercase cursor-pointer"
           >
             Today
           </button>
           <button
             type="button"
             onClick={() => handleQuickPick(1)}
-            className="px-2.5 py-1 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold cursor-pointer"
+            className="px-2.5 py-1 rounded-md bg-[#22262e] hover:bg-[#2e333d] border border-white/20 text-[#f4f1ea] text-xs font-bold uppercase cursor-pointer"
           >
             Tomorrow
           </button>
           <button
             type="button"
             onClick={handleThisSaturday}
-            className="px-2.5 py-1 rounded-xl bg-fuchsia-500/20 hover:bg-fuchsia-500/30 border border-fuchsia-400/40 text-fuchsia-200 text-xs font-bold cursor-pointer"
+            className="px-2.5 py-1 rounded-md bg-[#ff2a85] text-white border border-[#f4f1ea] shadow-[2px_2px_0px_#07080a] text-xs font-bold uppercase cursor-pointer"
           >
             This Saturday
           </button>
@@ -159,7 +166,7 @@ export const EventCalendarModal: React.FC<EventCalendarModalProps> = ({
                 onSelectDate(null);
                 onClose();
               }}
-              className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/40 text-rose-200 text-xs font-bold cursor-pointer"
+              className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#ff5500] text-white border border-[#f4f1ea] text-xs font-bold uppercase cursor-pointer"
             >
               <RotateCcw className="w-3 h-3" />
               <span>All Dates</span>
@@ -168,23 +175,23 @@ export const EventCalendarModal: React.FC<EventCalendarModalProps> = ({
         </div>
 
         {/* Month Navigation Bar */}
-        <div className="flex items-center justify-between bg-slate-950/70 px-3 py-2 rounded-2xl border border-white/10">
+        <div className="flex items-center justify-between bg-[#111317] px-3 py-2 rounded-lg border-2 border-[#f4f1ea]/30">
           <button
             type="button"
             onClick={goPrevMonth}
             aria-label="Previous month"
-            className="p-1.5 rounded-xl hover:bg-white/10 text-slate-200 cursor-pointer"
+            className="p-1.5 rounded-md hover:bg-white/10 text-[#f4f1ea] cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-sm font-extrabold tracking-tight text-white">
+          <span className="font-grotesk text-sm font-extrabold uppercase tracking-tight text-[#ffe600]">
             {monthTitle}
           </span>
           <button
             type="button"
             onClick={goNextMonth}
             aria-label="Next month"
-            className="p-1.5 rounded-xl hover:bg-white/10 text-slate-200 cursor-pointer"
+            className="p-1.5 rounded-md hover:bg-white/10 text-[#f4f1ea] cursor-pointer"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -195,7 +202,7 @@ export const EventCalendarModal: React.FC<EventCalendarModalProps> = ({
           {WEEKDAYS.map((day) => (
             <div
               key={day}
-              className="text-[10px] font-bold uppercase tracking-wider text-slate-400 py-1"
+              className="font-mono-stamp text-[10px] font-bold uppercase tracking-wider text-[#a8a498] py-1"
             >
               {day}
             </div>
@@ -212,27 +219,29 @@ export const EventCalendarModal: React.FC<EventCalendarModalProps> = ({
                   onSelectDate(cell.dateKey);
                   onClose();
                 }}
-                className={`relative h-12 rounded-2xl flex flex-col items-center justify-center transition-all cursor-pointer border ${
+                className={`relative h-12 rounded-lg flex flex-col items-center justify-center transition-all cursor-pointer border ${
                   isSelected
-                    ? 'bg-gradient-to-br from-cyan-400 to-blue-600 text-slate-950 border-white font-black shadow-lg scale-105 z-10'
+                    ? 'bg-[#ffe600] text-[#0d0e11] border-2 border-[#0d0e11] outline-2 outline-[#f4f1ea] font-black shadow-[2px_3px_0px_#07080a] scale-105 z-10'
                     : cell.isToday
-                      ? 'bg-cyan-500/15 border-cyan-400/60 text-cyan-200 font-bold hover:bg-cyan-500/25'
+                      ? 'bg-[#22262e] border-2 border-[#ffe600] text-[#ffe600] font-bold hover:bg-[#2e333d]'
                       : cell.isCurrentMonth
-                        ? 'bg-slate-950/60 border-white/5 text-white hover:bg-white/10 hover:border-white/20'
-                        : 'bg-slate-950/25 border-transparent text-slate-600 hover:bg-white/5'
+                        ? 'bg-[#111317] border-white/15 text-[#f4f1ea] hover:bg-[#22262e] hover:border-white/40'
+                        : 'bg-[#111317]/40 border-transparent text-[#68665e] hover:bg-white/5'
                 }`}
               >
-                <span className="text-xs leading-none">{cell.dayNumber}</span>
+                <span className="font-mono-stamp text-xs leading-none">
+                  {cell.dayNumber}
+                </span>
 
-                {/* Event Activity Dot / Count Badge */}
+                {/* Event Activity Count Slap */}
                 {cell.eventCount > 0 ? (
                   <span
-                    className={`mt-1 px-1.5 py-0.2 rounded-full text-[9px] font-extrabold leading-tight flex items-center gap-0.5 ${
+                    className={`mt-1 px-1.5 py-[1px] rounded-sm font-mono-stamp text-[9px] font-bold leading-tight flex items-center gap-0.5 ${
                       isSelected
-                        ? 'bg-slate-950 text-cyan-300'
+                        ? 'bg-[#0d0e11] text-[#ffe600]'
                         : cell.hasLive
-                          ? 'bg-rose-500/30 text-rose-300 border border-rose-400/40'
-                          : 'bg-cyan-500/20 text-cyan-300'
+                          ? 'bg-[#ff2a85] text-white'
+                          : 'bg-[#262b33] text-[#ffe600]'
                     }`}
                   >
                     {cell.hasLive && <Flame className="w-2.5 h-2.5" />}
@@ -247,10 +256,9 @@ export const EventCalendarModal: React.FC<EventCalendarModalProps> = ({
         </div>
 
         {/* Native Date Input Jump + Legend */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10 text-[11px] text-slate-400">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/15 font-mono-stamp text-[11px] text-[#b8b4a8]">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Jump to date:</span>
+            <span>JUMP:</span>
             <input
               type="date"
               value={selectedDate || toDateKey(new Date())}
@@ -260,14 +268,13 @@ export const EventCalendarModal: React.FC<EventCalendarModalProps> = ({
                   onClose();
                 }
               }}
-              className="px-2 py-1 rounded-xl bg-slate-950 border border-white/15 text-xs text-white focus:outline-none focus:border-cyan-400"
+              className="px-2 py-1 rounded-md bg-[#111317] border border-[#f4f1ea]/40 text-xs text-[#f4f1ea] focus:outline-none focus:border-[#ffe600]"
             />
           </div>
-          <span className="text-[10px] text-slate-400">
-            Badges show scheduled events
-          </span>
+          <span className="text-[10px]">Numbers = Slaps on Day</span>
         </div>
       </div>
     </div>
   );
 };
+

@@ -1,5 +1,68 @@
 @import "tailwindcss";
 
+:root {
+  --font-display: "Archivo Black", "Space Grotesk", Impact, sans-serif;
+  --font-grotesk: "Space Grotesk", "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Modern Web Guidance: visual-effects (safe oklab/oklch gradient interpolation token) */
+  --in-oklab: ;
+  --in-oklch: ;
+}
+
+@supports (background: linear-gradient(in oklab, white, black)) {
+  :root {
+    --in-oklab: in oklab;
+    --in-oklch: in oklch;
+  }
+}
+
+/* Modern Web Guidance: typography & visually-stable-font-fallbacks */
+body {
+  font-family: var(--font-sans);
+  font-size-adjust: from-font;
+  line-height: 1.5;
+  text-align: start;
+  overflow-wrap: break-word;
+  background-color: #121417;
+  color: #f5f3eb;
+}
+
+/* Modern Web Guidance: improve-text-layout-and-legibility & visually-stable-font-fallbacks
+   Targeted strictly to standalone headings without direct box borders/backgrounds */
+h1,
+h2,
+h3 {
+  font-family: var(--font-grotesk);
+  font-size-adjust: cap-height from-font;
+  text-wrap: balance;
+}
+
+.font-display-slap {
+  font-family: var(--font-display);
+  font-size-adjust: cap-height from-font;
+  letter-spacing: -0.02em;
+}
+
+.font-grotesk {
+  font-family: var(--font-grotesk);
+  font-size-adjust: from-font;
+}
+
+.font-mono-stamp {
+  font-family: var(--font-mono);
+  font-size-adjust: from-font;
+}
+
+/* Modern Web Guidance: improve-text-layout-and-legibility (text-wrap: pretty for multi-line prose) */
+.event-description-copy p,
+.event-description-copy li,
+.event-description-copy blockquote {
+  text-wrap: pretty;
+  max-width: 75ch;
+}
+
 /* Modern Web Guidance: prevent-page-scroll-under-modal-dialog */
 dialog:modal {
   overscroll-behavior: contain;
@@ -13,35 +76,35 @@ dialog::backdrop {
 /* Modern Web Guidance: animate-to-from-top-layer */
 dialog {
   opacity: 0;
-  transform: scale(0.94);
+  transform: scale(0.95) rotate(-1deg);
   transition-property: opacity, transform, overlay, display;
-  transition-duration: 0.24s;
+  transition-duration: 0.22s;
   transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
   transition-behavior: allow-discrete;
 }
 
 dialog::backdrop {
-  background-color: rgb(2 6 23 / 0);
+  background-color: rgb(10 12 14 / 0);
   transition-property: background-color, overlay, display;
-  transition-duration: 0.24s;
+  transition-duration: 0.22s;
   transition-timing-function: ease-out;
   transition-behavior: allow-discrete;
 }
 
 :is(dialog[open]):where(:not([data-closing])) {
   opacity: 1;
-  transform: scale(1);
+  transform: scale(1) rotate(0deg);
 
   @starting-style {
     opacity: 0;
-    transform: scale(0.94);
+    transform: scale(0.95) rotate(-1deg);
   }
 
   &::backdrop {
-    background-color: rgb(2 6 23 / 0.8);
+    background-color: rgb(10 12 14 / 0.84);
 
     @starting-style {
-      background-color: rgb(2 6 23 / 0);
+      background-color: rgb(10 12 14 / 0);
     }
   }
 }
@@ -59,17 +122,138 @@ dialog::backdrop {
   }
 }
 
+/* ============================================================================
+   TARRA: STICKERS ON A POLE — INDUSTRIAL SURFACES & DIE-CUT STICKER PRIMITIVES
+   ============================================================================ */
+
+/* Dark metal / street utility box backdrop with subtle halftone dot matrix */
+.street-box-bg {
+  --distance: 18px;
+  --radius: 1px;
+  --polka: radial-gradient(circle, rgba(255, 255, 255, 0.055) var(--radius), transparent calc(var(--radius) + 0.5px));
+  background:
+    var(--polka) 0 0,
+    var(--polka) var(--distance) var(--distance),
+    linear-gradient(to bottom var(--in-oklab), #16191e, #101215);
+  background-size:
+    calc(var(--distance) * 2) calc(var(--distance) * 2),
+    calc(var(--distance) * 2) calc(var(--distance) * 2),
+    100% 100%;
+}
+
+/* Cylindrical galvanized steel pole spine */
+.galvanized-pole-spine {
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.025) 0 1px,
+      transparent 0 3px
+    ),
+    linear-gradient(
+      to right var(--in-oklab),
+      #1d2127 0%,
+      #2d333c 18%,
+      #434b57 38%,
+      #343b46 58%,
+      #232830 82%,
+      #171a1f 100%
+    );
+  border-left: 2px solid #4a5360;
+  border-right: 2px solid #0d0f12;
+  box-shadow:
+    inset 4px 0 10px rgba(255, 255, 255, 0.08),
+    inset -6px 0 14px rgba(0, 0, 0, 0.65),
+    0 0 36px rgba(0, 0, 0, 0.85);
+}
+
+/* Stainless steel pole mounting strap / clamp band (as seen in Photo 3) */
+.pole-clamp-band {
+  background: linear-gradient(
+    to bottom var(--in-oklab),
+    #687382 0%,
+    #9ba6b5 30%,
+    #525b68 65%,
+    #2b3038 100%
+  );
+  border-top: 1px solid #bbc4d0;
+  border-bottom: 2px solid #111317;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.7);
+}
+
+/* Die-cut vinyl sticker frame (crisp white paper outline + hard physical drop shadow) */
+.tarra-sticker-card {
+  background-color: #181b20;
+  border: 2.5px solid #f4f1ea;
+  box-shadow:
+    4px 5px 0px #07080a,
+    0 10px 24px rgba(0, 0, 0, 0.55);
+  transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.16s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.16s ease;
+}
+
+.tarra-sticker-card:hover {
+  transform: translate(-1px, -2px);
+  box-shadow:
+    6px 7px 0px #07080a,
+    0 14px 28px rgba(0, 0, 0, 0.65);
+}
+
+/* Paper/postal white die-cut sticker variant */
+.tarra-paper-slap {
+  background-color: #f6f3ec;
+  color: #111317;
+  border: 2.5px solid #111317;
+  outline: 2px solid #f6f3ec;
+  box-shadow: 4px 5px 0px #07080a;
+}
+
+/* Hazard yellow street sign slap (inspired by TEVA / CB1 stickers) */
+.tarra-hazard-slap {
+  background-color: #ffe600;
+  color: #0d0e11;
+  border: 2px solid #0d0e11;
+  box-shadow: 3px 3px 0px #07080a;
+}
+
+/* Diagonal hazard stripe pattern using Modern Web Guidance single-stop gradient syntax */
+.hazard-stripe-bar {
+  --color-1: #ffe600;
+  --color-2: #111317;
+  background: repeating-linear-gradient(-45deg, var(--color-1) 0 8px, var(--color-2) 0 16px);
+}
+
+/* Postal label red/blue stripe header */
+.postal-stripe-bar {
+  background: linear-gradient(
+    to right,
+    #e11d48 0 32%,
+    transparent 0 34%,
+    #1d4ed8 0 100%
+  );
+}
+
+/* Modern Web Guidance: soft-edge-content-fade for horizontal sticker/filter strips */
+.scroll-fade-right {
+  -webkit-mask-image: linear-gradient(to right, black 92%, transparent 100%);
+  mask-image: linear-gradient(to right, black 92%, transparent 100%);
+}
+
+@supports (not (mask-image: linear-gradient(to right, black, transparent))) and (not (-webkit-mask-image: linear-gradient(to right, black, transparent))) {
+  .scroll-fade-right {
+    position: relative;
+  }
+}
+
 /* Modern Web Guidance: defer-rendering-heavy-content
-   Applied strictly to off-screen event cards (index >= 8) in the List View */
+   Applied strictly to off-screen event cards (index >= 8) in the Pole Feed View */
 .event-card-deferred {
   content-visibility: auto;
-  contain-intrinsic-size: auto none auto 210px;
+  contain-intrinsic-size: auto none auto 230px;
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(5px);
   }
   to {
     opacity: 1;
@@ -78,10 +262,10 @@ dialog::backdrop {
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Custom sleek scrollbars for horizontal story dock */
+/* Hide scrollbars on horizontal sticker strips while preserving touch/wheel scrolling */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -89,3 +273,4 @@ dialog::backdrop {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+

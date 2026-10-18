@@ -1,6 +1,6 @@
-# SnapEvents 6Aika — 6-City Interactive Event Map & 9:16 Story Player (`tarra-demo`)
+# tarra — 6-City Street Pole Event Stickers, Live Map & Flyer Player (`tarra-demo`)
 
-A 100% client-side WebGL event discovery application built for **GitHub Pages (`github.io`)** using the **6Aika Linked Events API (`api.hel.fi/linkedevents/v1/`)** and **OpenFreeMap (`tiles.openfreemap.org`)**.
+A 100% client-side WebGL event discovery application inspired by street stickers on a galvanized pole, built for **GitHub Pages (`github.io`)** using the **6Aika Linked Events API (`api.hel.fi/linkedevents/v1/`)** and **OpenFreeMap (`tiles.openfreemap.org`)**.
 
 ## ✨ Features
 

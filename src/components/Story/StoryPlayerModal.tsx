@@ -13,7 +13,6 @@ import {
   Play,
   Share2,
   ShieldCheck,
-  Sparkles,
   Ticket,
   X,
   ChevronLeft,
@@ -235,6 +234,8 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         e.preventDefault();
         goPrev();
       } else if (e.key === ' ') {
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        if (tag === 'BUTTON' || tag === 'A' || tag === 'INPUT') return;
         e.preventDefault();
         setIsPaused((p) => !p);
       }
@@ -255,7 +256,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
       <dialog
         ref={dialogRef}
         closedby="any"
-        aria-label="Snap Story Player"
+        aria-label="tarra Event Sticker Flyer"
         className="m-auto bg-transparent p-0 border-0 outline-none"
       />
     );
@@ -296,35 +297,42 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
       ref={dialogRef}
       closedby="any"
       aria-labelledby="story-modal-title"
-      className="m-auto w-full max-w-[410px] h-[min(92dvh,750px)] aspect-[9/16] rounded-3xl bg-slate-950 text-white p-0 border border-white/15 shadow-[0_0_70px_rgba(0,0,0,0.9)] overflow-hidden outline-none"
+      className="m-auto w-[calc(100vw-24px)] max-w-[410px] h-[min(90dvh,740px)] aspect-[9/16] rounded-2xl bg-[#121418] text-[#f4f1ea] p-0 border-[3.5px] border-[#f4f1ea] shadow-[8px_10px_0px_#07080a,0_0_70px_rgba(0,0,0,0.9)] overflow-hidden outline-none"
     >
-      <div className="relative w-full h-full flex flex-col justify-between select-none overflow-hidden">
+      <div className="relative w-full h-full flex flex-col justify-between select-none overflow-hidden border-2 border-[#0d0e11]">
         {safeImageUrl ? (
           <img
             src={safeImageUrl}
             alt={currentEvent.imageAlt}
             onError={() => setImgError(true)}
-            className="absolute inset-0 w-full h-full object-cover scale-[1.02] transition-transform duration-700"
+            className="absolute inset-0 w-full h-full object-cover contrast-105 scale-[1.01] transition-transform duration-700"
           />
         ) : (
           <div
-            className={`absolute inset-0 bg-gradient-to-br ${topicMeta.ringGradient} opacity-90 flex items-center justify-center`}
+            className="absolute inset-0 flex flex-col items-center justify-center p-6"
+            style={{
+              backgroundColor: topicMeta.slapBg,
+              color: topicMeta.slapText,
+            }}
           >
-            <div className="text-[110px] opacity-25 select-none filter blur-[1px]">
+            <div className="text-[100px] opacity-30 select-none leading-none">
               {currentEvent.categoryEmoji}
+            </div>
+            <div className="mt-2 px-3 py-1 bg-[#0d0e11] text-[#f4f1ea] font-display-slap text-xs uppercase tracking-widest">
+              TARRA // {cityMeta.name}
             </div>
           </div>
         )}
 
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-slate-950/85 via-slate-950/25 to-slate-950/95" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0d0e11]/90 via-[#0d0e11]/25 to-[#0d0e11]/95" />
 
         {/* TOP BAR */}
         <div className="relative z-20 pt-3 px-3.5 flex flex-col gap-2.5">
-          {/* Segmented Story Progress Bars */}
+          {/* Segmented Sticker Tape Progress Bars */}
           <div
             className="flex items-center gap-1.5"
             role="tablist"
-            aria-label="Venue stories"
+            aria-label="Venue flyers"
           >
             {events.map((ev, idx) => {
               const barWidth =
@@ -335,15 +343,15 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                   type="button"
                   role="tab"
                   aria-selected={idx === activeIndex}
-                  aria-label={`Story ${idx + 1}: ${ev.title}`}
+                  aria-label={`Flyer ${idx + 1}: ${ev.title}`}
                   onClick={() => {
                     setActiveIndex(idx);
                     setProgress(0);
                   }}
-                  className="flex-1 h-1.5 rounded-full bg-white/25 overflow-hidden cursor-pointer focus:outline-none"
+                  className="flex-1 h-2 bg-white/25 border border-[#0d0e11] overflow-hidden cursor-pointer focus:outline-none"
                 >
                   <div
-                    className="h-full bg-gradient-to-r from-cyan-400 via-white to-fuchsia-400 transition-[width] duration-75"
+                    className="h-full bg-[#ffe600] transition-[width] duration-75"
                     style={{ width: `${barWidth}%` }}
                   />
                 </button>
@@ -351,27 +359,31 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
             })}
           </div>
 
-          {/* Venue Header + Controls */}
-          <div className="flex items-center justify-between gap-2">
+          {/* Venue Street-Sign Slap Header + Controls */}
+          <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-[#121418]/95 border-2 border-[#f4f1ea] shadow-[3px_3px_0px_#07080a]">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="relative w-10 h-10 rounded-full p-[2px] bg-gradient-to-tr from-cyan-400 via-fuchsia-500 to-amber-400 shrink-0">
-                <div className="w-full h-full rounded-full bg-slate-950 flex items-center justify-center text-lg">
-                  {currentEvent.categoryEmoji}
-                </div>
+              <div
+                className="w-9 h-9 rounded-md border-2 border-[#0d0e11] flex items-center justify-center text-lg shrink-0 shadow-[2px_2px_0px_#07080a]"
+                style={{
+                  backgroundColor: topicMeta.slapBg,
+                  color: topicMeta.slapText,
+                }}
+              >
+                {currentEvent.categoryEmoji}
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-white truncate">
+                  <span className="font-grotesk text-xs font-extrabold uppercase tracking-tight text-[#ffe600] truncate">
                     {currentEvent.venueName}
                   </span>
                   {currentEvent.isLiveNow && (
-                    <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-[9px] font-black uppercase tracking-wider text-white animate-pulse">
-                      LIVE NOW
+                    <span className="px-1.5 py-[1px] bg-[#ff2a85] text-white border border-[#f4f1ea] font-mono-stamp text-[8px] font-bold uppercase tracking-tighter animate-pulse">
+                      ● LIVE
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-slate-300 truncate flex items-center gap-1">
-                  <MapPin className="w-3 h-3 text-cyan-400 shrink-0" />
+                <p className="font-mono-stamp text-[10px] text-[#d5d2c8] truncate flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-[#ffe600] shrink-0" />
                   <span>
                     {formatDistance(currentEvent.distanceKm)} • {cityMeta.name} •{' '}
                     {currentEvent.streetAddress}
@@ -385,13 +397,13 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                 type="button"
                 onClick={() => onToggleSaveEvent(currentEvent.id)}
                 aria-label={
-                  isSaved ? 'Remove from saved lineup' : 'Save event to lineup'
+                  isSaved ? 'Remove from saved stash' : 'Save sticker to stash'
                 }
-                title={isSaved ? 'Saved in Lineup' : 'Save to Lineup'}
-                className={`p-2 rounded-full border backdrop-blur-md cursor-pointer transition-colors ${
+                title={isSaved ? 'Saved in Stash' : 'Save to Stash'}
+                className={`p-1.5 rounded-md border cursor-pointer transition-colors ${
                   isSaved
-                    ? 'bg-fuchsia-500 text-white border-fuchsia-300'
-                    : 'bg-slate-900/70 hover:bg-slate-800 text-white border-white/15'
+                    ? 'bg-[#ff2a85] text-white border-[#f4f1ea]'
+                    : 'bg-[#22262e] hover:bg-[#2e333d] text-[#f4f1ea] border-white/25'
                 }`}
               >
                 <Bookmark
@@ -402,9 +414,9 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                 type="button"
                 onClick={() => setIsPaused((p) => !p)}
                 aria-label={
-                  isPaused ? 'Resume story timer' : 'Pause story timer'
+                  isPaused ? 'Resume flyer timer' : 'Pause flyer timer'
                 }
-                className="p-2 rounded-full bg-slate-900/70 hover:bg-slate-800 text-white border border-white/15 backdrop-blur-md cursor-pointer"
+                className="p-1.5 rounded-md bg-[#22262e] hover:bg-[#2e333d] text-[#f4f1ea] border border-white/25 cursor-pointer"
               >
                 {isPaused ? (
                   <Play className="w-4 h-4" />
@@ -419,28 +431,28 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                     void closeTopLayer(dialogRef.current);
                   }
                 }}
-                aria-label="Close story viewer"
-                className="p-2 rounded-full bg-slate-900/70 hover:bg-slate-800 text-white border border-white/15 backdrop-blur-md cursor-pointer"
+                aria-label="Close flyer viewer"
+                className="p-1.5 rounded-md bg-[#ffe600] hover:bg-[#fff04d] text-[#0d0e11] border border-[#0d0e11] cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Mandatory Photographer & Source Attribution Pill */}
-          <div className="flex flex-wrap items-center justify-between gap-1.5 pt-0.5">
+          {/* Mandatory Photographer & Source Attribution Stamp */}
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
             <div
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/75 border border-white/15 backdrop-blur-md text-[10px] text-slate-200 max-w-full truncate"
+              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-[#121418]/90 border border-[#f4f1ea]/40 font-mono-stamp text-[10px] text-[#f4f1ea] max-w-full truncate shadow"
               title={currentEvent.attribution.badgeText}
             >
-              <span className="truncate font-medium">
+              <span className="truncate">
                 {currentEvent.attribution.badgeText}
               </span>
             </div>
-            <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-400/40 text-[9px] font-semibold uppercase tracking-wider text-cyan-200">
+            <span className="px-2 py-0.5 rounded-sm bg-[#ffe600] text-[#0d0e11] border border-[#0d0e11] font-mono-stamp text-[9px] font-bold uppercase tracking-tighter">
               {currentEvent.attribution.licenseType === 'cc_by'
                 ? 'CC BY 4.0'
-                : 'Event-Only Media'}
+                : 'EVENT-ONLY'}
             </span>
           </div>
         </div>
@@ -449,11 +461,11 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         <div className="relative z-10 flex-1 grid grid-cols-3 items-center">
           <button
             type="button"
-            aria-label="Previous story"
+            aria-label="Previous flyer"
             onClick={goPrev}
             className="h-full w-full flex items-center justify-start pl-2 opacity-0 hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer focus:outline-none"
           >
-            <span className="p-1.5 rounded-full bg-slate-950/60 border border-white/15 text-white">
+            <span className="p-1.5 rounded-md bg-[#121418]/90 border-2 border-[#f4f1ea] text-[#f4f1ea] shadow-[2px_2px_0px_#07080a]">
               <ChevronLeft className="w-5 h-5" />
             </span>
           </button>
@@ -466,25 +478,31 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
           />
           <button
             type="button"
-            aria-label="Next story"
+            aria-label="Next flyer"
             onClick={goNext}
             className="h-full w-full flex items-center justify-end pr-2 opacity-0 hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer focus:outline-none"
           >
-            <span className="p-1.5 rounded-full bg-slate-950/60 border border-white/15 text-white">
+            <span className="p-1.5 rounded-md bg-[#121418]/90 border-2 border-[#f4f1ea] text-[#f4f1ea] shadow-[2px_2px_0px_#07080a]">
               <ChevronRight className="w-5 h-5" />
             </span>
           </button>
         </div>
 
-        {/* BOTTOM STORY CONTENT & ACTIONS */}
+        {/* BOTTOM FLYER POSTER BLOCK & ACTIONS */}
         <div className="relative z-20 px-4 pb-4 pt-2 flex flex-col gap-2.5">
-          {/* Category, Price & Calendar Export Pills */}
+          {/* Category, Price & Calendar Export Slaps */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/15 backdrop-blur-md text-xs font-semibold text-white">
+            <span
+              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-sm border border-[#0d0e11] shadow-[2px_2px_0px_#07080a] font-grotesk text-xs font-extrabold uppercase tracking-tight"
+              style={{
+                backgroundColor: topicMeta.slapBg,
+                color: topicMeta.slapText,
+              }}
+            >
               <span>{currentEvent.categoryEmoji}</span>
               <span>{currentEvent.categoryLabel}</span>
             </span>
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 backdrop-blur-md text-xs font-bold text-emerald-200">
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-sm bg-[#22c55e] text-[#0d0e11] border border-[#0d0e11] shadow-[2px_2px_0px_#07080a] font-mono-stamp text-xs font-bold uppercase">
               <Ticket className="w-3.5 h-3.5" />
               <span>{currentEvent.priceText}</span>
             </span>
@@ -492,48 +510,48 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               type="button"
               onClick={() => downloadEventIcs(currentEvent)}
               title="Add event to Apple / Outlook / Mobile Calendar (.ics)"
-              className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/85 hover:bg-slate-800 border border-cyan-400/40 text-[11px] font-bold text-cyan-200 cursor-pointer"
+              className="ml-auto inline-flex items-center gap-1 px-2.5 py-0.5 rounded-sm bg-[#121418] hover:bg-[#22262e] border border-[#f4f1ea] font-mono-stamp text-[11px] font-bold text-[#ffe600] cursor-pointer shadow-[2px_2px_0px_#07080a]"
             >
-              <CalendarPlus className="w-3 h-3 text-cyan-400" />
-              <span>+ Calendar</span>
+              <CalendarPlus className="w-3 h-3 text-[#ffe600]" />
+              <span>+ .ICS</span>
             </button>
           </div>
 
-          {/* Event Title & Short Summary */}
-          <div>
+          {/* Event Title & Short Summary Sticker Block */}
+          <div className="p-3 rounded-lg bg-[#121418]/92 border-2 border-[#f4f1ea] shadow-[4px_4px_0px_#07080a]">
             <h2
               id="story-modal-title"
-              className="text-xl font-extrabold tracking-tight text-white leading-snug drop-shadow-md"
+              className="text-lg sm:text-xl font-extrabold tracking-tight text-[#f4f1ea] leading-snug"
             >
               {currentEvent.title}
             </h2>
-            <p className="mt-1 text-xs text-cyan-200 font-medium flex items-center gap-1.5">
+            <p className="mt-1 font-mono-stamp text-xs text-[#ffe600] font-bold flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 shrink-0" />
               <span>
                 {formatTimeWindow(currentEvent.startTime, currentEvent.endTime)}
               </span>
             </p>
-            <p className="mt-1.5 text-xs text-slate-200 line-clamp-2 leading-relaxed">
+            <p className="mt-1.5 text-xs text-[#d5d2c8] line-clamp-2 leading-relaxed">
               {currentEvent.shortDescription}
             </p>
           </div>
 
           {/* Primary Action Bar */}
-          <div className="grid grid-cols-12 gap-2 pt-1">
+          <div className="grid grid-cols-12 gap-2 pt-0.5">
             <button
               type="button"
               onClick={() => setDrawerOpen(true)}
-              className="col-span-5 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-2xl bg-white text-slate-950 font-bold text-xs shadow-lg hover:bg-cyan-300 transition-colors cursor-pointer"
+              className="col-span-5 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#f4f1ea] hover:bg-white text-[#0d0e11] border-2 border-[#0d0e11] shadow-[3px_3px_0px_#07080a] font-grotesk font-extrabold text-xs uppercase tracking-tight transition-colors cursor-pointer"
             >
               <Info className="w-4 h-4" />
-              <span>Read More</span>
+              <span>Full Flyer</span>
             </button>
 
             <a
               href={currentEvent.reittiopasUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="col-span-5 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold text-xs shadow-lg hover:from-cyan-400 hover:to-blue-500 transition-all"
+              className="col-span-5 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#ffe600] hover:bg-[#fff04d] text-[#0d0e11] border-2 border-[#0d0e11] shadow-[3px_3px_0px_#07080a] font-grotesk font-extrabold text-xs uppercase tracking-tight transition-all"
             >
               <Navigation className="w-4 h-4" />
               <span>Reittiopas</span>
@@ -544,10 +562,10 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               onClick={handleShareClick}
               aria-label="Copy deep link to this event"
               title="Copy shareable URL (?city=...&event=...)"
-              className="col-span-2 inline-flex items-center justify-center rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-white/20 text-white transition-colors cursor-pointer"
+              className="col-span-2 inline-flex items-center justify-center rounded-lg bg-[#22262e] hover:bg-[#2e333d] border-2 border-[#f4f1ea] shadow-[3px_3px_0px_#07080a] text-[#f4f1ea] transition-colors cursor-pointer"
             >
               {copiedToast ? (
-                <Check className="w-4 h-4 text-emerald-400" />
+                <Check className="w-4 h-4 text-[#22c55e]" />
               ) : (
                 <Share2 className="w-4 h-4" />
               )}
@@ -555,14 +573,14 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
           </div>
 
           {copiedToast && (
-            <div className="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-400/50 text-emerald-200 text-[11px] font-semibold text-center animate-fade-in">
-              ✓ Deep link copied! (?city={currentEvent.cityId}&event=
+            <div className="px-3 py-1.5 rounded-md bg-[#22c55e] text-[#0d0e11] border-2 border-[#0d0e11] font-mono-stamp text-[11px] font-bold text-center animate-fade-in">
+              ✓ LINK COPIED (?city={currentEvent.cityId}&event=
               {currentEvent.id})
             </div>
           )}
 
           {/* CC BY 4.0 API Attribution Footer */}
-          <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5 border-t border-white/10">
+          <div className="flex items-center justify-between font-mono-stamp text-[10px] text-[#b8b4a8] pt-0.5 border-t border-white/15">
             <span className="truncate">
               {currentEvent.attribution.apiAttributionText}
             </span>
@@ -570,27 +588,29 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               href={currentEvent.attribution.apiLicenseUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="underline hover:text-cyan-300 shrink-0 ml-2"
+              className="underline hover:text-[#ffe600] shrink-0 ml-2 font-bold"
             >
               CC BY 4.0
             </a>
           </div>
         </div>
 
-        {/* DOMPurify Sanitized HTML Description Drawer */}
+        {/* DOMPurify Sanitized HTML Flyer Backside Drawer */}
         {drawerOpen && (
-          <div className="absolute inset-0 z-30 bg-slate-950/95 backdrop-blur-xl flex flex-col p-5 animate-fade-in">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+          <div className="absolute inset-0 z-30 bg-[#121418] flex flex-col p-5 animate-fade-in">
+            <div className="flex items-center justify-between pb-3 border-b-2 border-[#f4f1ea]/20">
               <div className="flex items-center gap-2 min-w-0">
-                <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
-                <h3 className="text-sm font-bold text-white truncate">
+                <span className="px-2 py-0.5 bg-[#ffe600] text-[#0d0e11] font-mono-stamp text-[10px] font-bold uppercase shrink-0">
+                  INFO
+                </span>
+                <h3 className="text-sm font-bold text-[#f4f1ea] truncate">
                   {currentEvent.title}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setDrawerOpen(false)}
-                className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                className="p-1.5 rounded-md bg-[#ffe600] text-[#0d0e11] border border-[#0d0e11] cursor-pointer"
                 aria-label="Close details drawer"
               >
                 <X className="w-4 h-4" />
@@ -598,9 +618,9 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
-              <div className="p-3 rounded-2xl bg-slate-900/90 border border-white/10 space-y-1.5 text-xs">
-                <div className="flex items-center gap-2 text-cyan-300 font-semibold">
-                  <Calendar className="w-3.5 h-3.5" />
+              <div className="p-3 rounded-lg bg-[#1a1d24] border-2 border-[#f4f1ea]/30 space-y-1.5 text-xs">
+                <div className="flex items-center gap-2 text-[#ffe600] font-mono-stamp font-bold">
+                  <Calendar className="w-3.5 h-3.5 shrink-0" />
                   <span>
                     {formatTimeWindow(
                       currentEvent.startTime,
@@ -608,14 +628,14 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                     )}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-slate-200">
-                  <MapPin className="w-3.5 h-3.5 text-fuchsia-400" />
+                <div className="flex items-center gap-2 text-[#f4f1ea]">
+                  <MapPin className="w-3.5 h-3.5 text-[#ff2a85] shrink-0" />
                   <span>
                     {currentEvent.venueName} — {currentEvent.streetAddress}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-slate-300">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <div className="flex items-center gap-2 text-[#c7c4b8] font-mono-stamp text-[11px]">
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#22c55e] shrink-0" />
                   <span>{currentEvent.attribution.badgeText}</span>
                 </div>
               </div>
@@ -625,34 +645,34 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                 <button
                   type="button"
                   onClick={() => downloadEventIcs(currentEvent)}
-                  className="flex-1 py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="flex-1 py-2 px-3 rounded-md bg-[#22262e] hover:bg-[#2e333d] border border-[#f4f1ea]/30 font-mono-stamp text-xs font-bold text-[#f4f1ea] inline-flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <CalendarPlus className="w-3.5 h-3.5 text-cyan-400" />
+                  <CalendarPlus className="w-3.5 h-3.5 text-[#ffe600]" />
                   <span>Download .ICS</span>
                 </button>
                 <a
                   href={buildGoogleCalendarUrl(currentEvent)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2 px-3 rounded-md bg-[#22262e] hover:bg-[#2e333d] border border-[#f4f1ea]/30 font-mono-stamp text-xs font-bold text-[#f4f1ea] inline-flex items-center justify-center gap-1.5"
                 >
-                  <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                  <Calendar className="w-3.5 h-3.5 text-[#ff5500]" />
                   <span>Google Calendar</span>
                 </a>
               </div>
 
               <div
-                className="prose prose-invert prose-sm max-w-none text-slate-200 text-xs leading-relaxed space-y-2"
+                className="event-description-copy prose prose-invert prose-sm max-w-none text-[#e5e2d8] text-xs leading-relaxed space-y-2"
                 dangerouslySetInnerHTML={{ __html: sanitizedDescriptionHtml }}
               />
             </div>
 
-            <div className="pt-3 border-t border-white/10 flex items-center gap-2">
+            <div className="pt-3 border-t-2 border-dashed border-[#f4f1ea]/20 flex items-center gap-2">
               <a
                 href={currentEvent.reittiopasUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs"
+                className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-[#ffe600] hover:bg-[#fff04d] text-[#0d0e11] border-2 border-[#0d0e11] shadow-[2px_2px_0px_#07080a] font-grotesk font-extrabold text-xs uppercase"
               >
                 <Navigation className="w-4 h-4" />
                 <span>Transit Route (Digitransit)</span>
@@ -662,7 +682,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                   href={currentEvent.infoUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs"
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-lg bg-[#22262e] hover:bg-[#2e333d] border border-[#f4f1ea] text-[#f4f1ea] font-grotesk font-bold text-xs uppercase"
                 >
                   <span>Official Page</span>
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -675,3 +695,4 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
     </dialog>
   );
 };
+

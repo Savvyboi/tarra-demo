@@ -1,4 +1,4 @@
-name: Deploy SnapEvents Demo to GitHub Pages
+name: Deploy tarra Demo to GitHub Pages
 
 on:
   push:

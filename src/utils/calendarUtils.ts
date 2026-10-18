@@ -177,10 +177,10 @@ export function downloadEventIcs(event: NormalizedEvent): void {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//SnapEvents 6Aika//Event Calendar//EN',
+    'PRODID:-//tarra//Street Pole Event Calendar//EN',
     'CALSCALE:GREGORIAN',
     'BEGIN:VEVENT',
-    `UID:${event.id}@snapevents.demo`,
+    `UID:${event.id}@tarra.events`,
     `DTSTAMP:${formatIcsTimestamp(new Date())}`,
     `DTSTART:${formatIcsTimestamp(event.startTime)}`,
     `DTEND:${formatIcsTimestamp(event.endTime)}`,

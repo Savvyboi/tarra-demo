@@ -28,8 +28,8 @@ export const CITIES: Record<CityId, CityConfig> = {
     bearing: -12,
     dataMechanism: 'live-api',
     sourceUrl: 'https://api.hel.fi/linkedevents/v1/event/?division=helsinki&include=location,keywords',
-    badgeColor: 'from-cyan-400 to-blue-500',
-    accentHex: '#22d3ee',
+    badgeColor: 'bg-[#ffe600] text-[#0d0e11]',
+    accentHex: '#ffe600',
     digitransitRouter: 'hsl',
   },
   espoo: {
@@ -43,7 +43,7 @@ export const CITIES: Record<CityId, CityConfig> = {
     bearing: 8,
     dataMechanism: 'live-api',
     sourceUrl: 'https://api.hel.fi/linkedevents/v1/event/?division=espoo&include=location,keywords',
-    badgeColor: 'from-sky-400 to-indigo-500',
+    badgeColor: 'bg-[#38bdf8] text-[#0d0e11]',
     accentHex: '#38bdf8',
     digitransitRouter: 'hsl',
   },
@@ -58,8 +58,8 @@ export const CITIES: Record<CityId, CityConfig> = {
     bearing: -5,
     dataMechanism: 'live-api',
     sourceUrl: 'https://api.hel.fi/linkedevents/v1/event/?division=vantaa&include=location,keywords',
-    badgeColor: 'from-emerald-400 to-teal-500',
-    accentHex: '#34d399',
+    badgeColor: 'bg-[#22c55e] text-[#0d0e11]',
+    accentHex: '#22c55e',
     digitransitRouter: 'hsl',
   },
   turku: {
@@ -73,8 +73,8 @@ export const CITIES: Record<CityId, CityConfig> = {
     bearing: 15,
     dataMechanism: 'static-jsonld',
     sourceUrl: 'feeds/turku.json',
-    badgeColor: 'from-amber-400 to-orange-500',
-    accentHex: '#fbbf24',
+    badgeColor: 'bg-[#ff5500] text-[#ffffff]',
+    accentHex: '#ff5500',
     digitransitRouter: 'waltti',
   },
   tampere: {
@@ -88,8 +88,8 @@ export const CITIES: Record<CityId, CityConfig> = {
     bearing: -18,
     dataMechanism: 'static-jsonld',
     sourceUrl: 'feeds/tampere.json',
-    badgeColor: 'from-fuchsia-400 to-rose-500',
-    accentHex: '#e879f9',
+    badgeColor: 'bg-[#ff2a85] text-[#ffffff]',
+    accentHex: '#ff2a85',
     digitransitRouter: 'waltti',
   },
   oulu: {
@@ -103,8 +103,8 @@ export const CITIES: Record<CityId, CityConfig> = {
     bearing: 10,
     dataMechanism: 'static-jsonld',
     sourceUrl: 'feeds/oulu.json',
-    badgeColor: 'from-violet-400 to-purple-500',
-    accentHex: '#a78bfa',
+    badgeColor: 'bg-[#f4f1ea] text-[#0d0e11]',
+    accentHex: '#f4f1ea',
     digitransitRouter: 'waltti',
   },
 };
@@ -124,15 +124,17 @@ export interface TopicMeta {
   emoji: string;
   color: string;
   ringGradient: string;
+  slapBg: string;
+  slapText: string;
 }
 
 export const TOPICS: TopicMeta[] = [
-  { id: 'all', label: 'All Vibes', emoji: '✨', color: '#38bdf8', ringGradient: 'from-cyan-400 via-fuchsia-500 to-amber-400' },
-  { id: 'music', label: 'Music & Gigs', emoji: '🎵', color: '#f43f5e', ringGradient: 'from-rose-500 via-fuchsia-500 to-indigo-500' },
-  { id: 'culture', label: 'Art & Theatre', emoji: '🎭', color: '#a855f7', ringGradient: 'from-purple-500 via-violet-500 to-pink-500' },
-  { id: 'sports', label: 'Sports & Action', emoji: '⚡', color: '#10b981', ringGradient: 'from-emerald-400 via-teal-500 to-cyan-500' },
-  { id: 'family', label: 'Family & Youth', emoji: '🎡', color: '#f59e0b', ringGradient: 'from-amber-400 via-orange-500 to-yellow-400' },
-  { id: 'food', label: 'Food & Markets', emoji: '🍜', color: '#fb923c', ringGradient: 'from-orange-400 via-red-500 to-amber-400' },
-  { id: 'nightlife', label: 'Nightlife & Clubs', emoji: '🪩', color: '#ec4899', ringGradient: 'from-pink-500 via-fuchsia-500 to-cyan-400' },
-  { id: 'nature', label: 'Parks & Outdoors', emoji: '🌲', color: '#22c55e', ringGradient: 'from-green-400 via-emerald-500 to-lime-400' },
+  { id: 'all', label: 'All Slaps', emoji: '⚡', color: '#ffe600', ringGradient: 'from-[#ffe600] via-[#ff5500] to-[#ff2a85]', slapBg: '#ffe600', slapText: '#0d0e11' },
+  { id: 'music', label: 'Music & Gigs', emoji: '🎵', color: '#ff2a85', ringGradient: 'from-[#ff2a85] via-[#e11d48] to-[#ff5500]', slapBg: '#ff2a85', slapText: '#ffffff' },
+  { id: 'culture', label: 'Art & Theatre', emoji: '🎭', color: '#f4f1ea', ringGradient: 'from-[#f4f1ea] via-[#94a3b8] to-[#38bdf8]', slapBg: '#f4f1ea', slapText: '#0d0e11' },
+  { id: 'sports', label: 'Sports & Action', emoji: '🛹', color: '#22c55e', ringGradient: 'from-[#22c55e] via-[#10b981] to-[#ffe600]', slapBg: '#22c55e', slapText: '#0d0e11' },
+  { id: 'family', label: 'Family & Youth', emoji: '🎡', color: '#facc15', ringGradient: 'from-[#facc15] via-[#fb923c] to-[#f43f5e]', slapBg: '#facc15', slapText: '#0d0e11' },
+  { id: 'food', label: 'Food & Markets', emoji: '🍜', color: '#ff5500', ringGradient: 'from-[#ff5500] via-[#f97316] to-[#ffe600]', slapBg: '#ff5500', slapText: '#ffffff' },
+  { id: 'nightlife', label: 'Nightlife & Clubs', emoji: '🪩', color: '#38bdf8', ringGradient: 'from-[#38bdf8] via-[#2563eb] to-[#ff2a85]', slapBg: '#38bdf8', slapText: '#0d0e11' },
+  { id: 'nature', label: 'Parks & Outdoors', emoji: '🌲', color: '#a3e635', ringGradient: 'from-[#a3e635] via-[#22c55e] to-[#14b8a6]', slapBg: '#a3e635', slapText: '#0d0e11' },
 ];

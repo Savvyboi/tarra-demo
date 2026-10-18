@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "SnapEvents 6-City Interactive Event Map & 9:16 Story Player built on 6Aika Linked Events API + OpenFreeMap WebGL",
+  "description": "tarra — 6-City Street Pole Event Stickers, Interactive Map & Flyer Player built on 6Aika Linked Events API + OpenFreeMap WebGL",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

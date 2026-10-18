@@ -1,0 +1,761 @@
+{
+  "meta": {
+    "count": 6,
+    "next": null,
+    "previous": null,
+    "generated_at": "2026-10-18T22:18:18.738Z",
+    "schema": "6Aika LinkedEvents v1 JSON-LD"
+  },
+  "data": [
+    {
+      "id": "tampere:nokia-arena-hockey-showdown",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/tampere:nokia-arena-hockey-showdown/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "tampere",
+      "publisher": "6aika:tampere",
+      "_demo_offset_hours": -0.5,
+      "_demo_duration_hours": 3.5,
+      "name": {
+        "fi": "Nokia Arena Live: Liiga-huippuottelu & Valoshow",
+        "en": "Nokia Arena Live: Ice Hockey Derby & LED Pregame Show"
+      },
+      "short_description": {
+        "fi": "Täyden areenan kiekkojuhla, 360° jääprojektiot ja live-DJ Nokia Arenalla.",
+        "en": "Electric Tampere ice hockey atmosphere with 360° on-ice projection mapping and live arena entertainment."
+      },
+      "description": {
+        "fi": "<p>Täyden areenan kiekkojuhla, 360° jääprojektiot ja live-DJ Nokia Arenalla.</p><p>Experience Europe’s most modern indoor arena right on top of the Tampere railway deck with a high-energy pregame light spectacle.</p>",
+        "en": "<p>Electric Tampere ice hockey atmosphere with 360° on-ice projection mapping and live arena entertainment.</p><p>Experience Europe’s most modern indoor arena right on top of the Tampere railway deck with a high-energy pregame light spectacle.</p>"
+      },
+      "start_time": "2026-10-18T21:48:18.733Z",
+      "end_time": "2026-10-19T01:18:18.733Z",
+      "provider": {
+        "fi": "Nokia Arena Tampere",
+        "en": "Nokia Arena Tampere"
+      },
+      "info_url": {
+        "fi": "https://nokiaarena.fi",
+        "en": "https://nokiaarena.fi"
+      },
+      "offers": [
+        {
+          "is_free": false,
+          "price": {
+            "fi": "29 €",
+            "en": "29 €"
+          },
+          "description": {
+            "fi": "Liput ennakkoon tai ovelta",
+            "en": "Tickets online or at the door"
+          },
+          "info_url": {
+            "fi": "https://nokiaarena.fi",
+            "en": "https://nokiaarena.fi"
+          }
+        }
+      ],
+      "location": {
+        "id": "tampere:place-nokia-arena",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/tampere:place-nokia-arena/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "tampere",
+        "name": {
+          "fi": "Nokia Arena",
+          "en": "Nokia Arena"
+        },
+        "street_address": {
+          "fi": "Kansikatu 3",
+          "en": "Kansikatu 3"
+        },
+        "address_locality": {
+          "fi": "Tampere",
+          "en": "Tampere"
+        },
+        "postal_code": "33100",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            23.7739,
+            61.4936
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:tampere",
+            "municipality": "tampere",
+            "name": {
+              "fi": "Tampere",
+              "en": "Tampere"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:tampere-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "sports",
+            "en": "sports"
+          }
+        },
+        {
+          "id": "yso:tampere-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "ice hockey",
+            "en": "ice hockey"
+          }
+        },
+        {
+          "id": "yso:tampere-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "entertainment",
+            "en": "entertainment"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "tampere:nokia-arena-hockey-showdown-img",
+          "url": "https://images.unsplash.com/photo-1515703407324-5f753afd8be8?auto=format&fit=crop&w=1080&q=80",
+          "name": "tampere:nokia-arena-hockey-showdown.jpg",
+          "photographer_name": "Tomi Vuorinen / Nokia Arena Media",
+          "alt_text": "Nokia Arena Live: Ice Hockey Derby & LED Pregame Show",
+          "license": "event_only",
+          "data_source": "tampere",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "tampere:nokia-arena-afterglow",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/tampere:nokia-arena-afterglow/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "tampere",
+      "publisher": "6aika:tampere",
+      "_demo_offset_hours": 2,
+      "_demo_duration_hours": 4,
+      "name": {
+        "fi": "Arena Rooftop Lounge & Indie Club Night",
+        "en": "Arena Rooftop Lounge & Indie Club Night"
+      },
+      "short_description": {
+        "fi": "Ottelun jälkeinen kattoterassiklubi ja tamperelaiset indie-DJ:t.",
+        "en": "Post-event skyline DJ sets and live synth-pop bands overlooking central Tampere."
+      },
+      "description": {
+        "fi": "<p>Ottelun jälkeinen kattoterassiklubi ja tamperelaiset indie-DJ:t.</p><p>Step into the Eventum Lounge at Nokia Arena for panoramic city lights, local craft beverages, and live electronic-indie acts.</p>",
+        "en": "<p>Post-event skyline DJ sets and live synth-pop bands overlooking central Tampere.</p><p>Step into the Eventum Lounge at Nokia Arena for panoramic city lights, local craft beverages, and live electronic-indie acts.</p>"
+      },
+      "start_time": "2026-10-19T00:18:18.733Z",
+      "end_time": "2026-10-19T04:18:18.733Z",
+      "provider": {
+        "fi": "Nokia Arena Tampere",
+        "en": "Nokia Arena Tampere"
+      },
+      "info_url": {
+        "fi": "https://nokiaarena.fi",
+        "en": "https://nokiaarena.fi"
+      },
+      "offers": [
+        {
+          "is_free": false,
+          "price": {
+            "fi": "15 €",
+            "en": "15 €"
+          },
+          "description": {
+            "fi": "Liput ennakkoon tai ovelta",
+            "en": "Tickets online or at the door"
+          },
+          "info_url": {
+            "fi": "https://nokiaarena.fi",
+            "en": "https://nokiaarena.fi"
+          }
+        }
+      ],
+      "location": {
+        "id": "tampere:place-nokia-arena",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/tampere:place-nokia-arena/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "tampere",
+        "name": {
+          "fi": "Nokia Arena",
+          "en": "Nokia Arena"
+        },
+        "street_address": {
+          "fi": "Kansikatu 3",
+          "en": "Kansikatu 3"
+        },
+        "address_locality": {
+          "fi": "Tampere",
+          "en": "Tampere"
+        },
+        "postal_code": "33100",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            23.7739,
+            61.4936
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:tampere",
+            "municipality": "tampere",
+            "name": {
+              "fi": "Tampere",
+              "en": "Tampere"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:tampere-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "nightlife",
+            "en": "nightlife"
+          }
+        },
+        {
+          "id": "yso:tampere-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "music",
+            "en": "music"
+          }
+        },
+        {
+          "id": "yso:tampere-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "club",
+            "en": "club"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "tampere:nokia-arena-afterglow-img",
+          "url": "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1080&q=80",
+          "name": "tampere:nokia-arena-afterglow.jpg",
+          "photographer_name": "Eero Salminen / Arena Events",
+          "alt_text": "Arena Rooftop Lounge & Indie Club Night",
+          "license": "event_only",
+          "data_source": "tampere",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "tampere:tamperetalo-symphony-cinema",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/tampere:tamperetalo-symphony-cinema/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "tampere",
+      "publisher": "6aika:tampere",
+      "_demo_offset_hours": -0.25,
+      "_demo_duration_hours": 3,
+      "name": {
+        "fi": "Tampere-talo: Pelimusiikin Sinfonia & Valokonsertti",
+        "en": "Tampere Hall: Nordic Game Music Symphony in Concert"
+      },
+      "short_description": {
+        "fi": "Tampere Filharmonia esittää ikonista pohjoismaista peli- ja elokuvamusiikkia Iso-salissa.",
+        "en": "Tampere Philharmonic Orchestra performs iconic Nordic video game and cinema scores live."
+      },
+      "description": {
+        "fi": "<p>Tampere Filharmonia esittää ikonista pohjoismaista peli- ja elokuvamusiikkia Iso-salissa.</p><p>An unforgettable symphonic evening at Tampere-talo featuring an 85-piece orchestra, choir, and synchronized stage visuals.</p>",
+        "en": "<p>Tampere Philharmonic Orchestra performs iconic Nordic video game and cinema scores live.</p><p>An unforgettable symphonic evening at Tampere-talo featuring an 85-piece orchestra, choir, and synchronized stage visuals.</p>"
+      },
+      "start_time": "2026-10-18T22:03:18.733Z",
+      "end_time": "2026-10-19T01:03:18.733Z",
+      "provider": {
+        "fi": "Tampere-talo Oy",
+        "en": "Tampere-talo Oy"
+      },
+      "info_url": {
+        "fi": "https://tampere-talo.fi",
+        "en": "https://tampere-talo.fi"
+      },
+      "offers": [
+        {
+          "is_free": false,
+          "price": {
+            "fi": "39 €",
+            "en": "39 €"
+          },
+          "description": {
+            "fi": "Liput ennakkoon tai ovelta",
+            "en": "Tickets online or at the door"
+          },
+          "info_url": {
+            "fi": "https://tampere-talo.fi",
+            "en": "https://tampere-talo.fi"
+          }
+        }
+      ],
+      "location": {
+        "id": "tampere:place-tamperetalo",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/tampere:place-tamperetalo/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "tampere",
+        "name": {
+          "fi": "Tampere-talo",
+          "en": "Tampere Hall (Tampere-talo)"
+        },
+        "street_address": {
+          "fi": "Yliopistonkatu 55",
+          "en": "Yliopistonkatu 55"
+        },
+        "address_locality": {
+          "fi": "Tampere",
+          "en": "Tampere"
+        },
+        "postal_code": "33100",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            23.7817,
+            61.4957
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:tampere",
+            "municipality": "tampere",
+            "name": {
+              "fi": "Tampere",
+              "en": "Tampere"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:tampere-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "music",
+            "en": "music"
+          }
+        },
+        {
+          "id": "yso:tampere-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "concert",
+            "en": "concert"
+          }
+        },
+        {
+          "id": "yso:tampere-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "culture",
+            "en": "culture"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "tampere:tamperetalo-symphony-cinema-img",
+          "url": "https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&w=1080&q=80",
+          "name": "tampere:tamperetalo-symphony-cinema.jpg",
+          "photographer_name": "Petri Kangas / Tampere-talo",
+          "alt_text": "Tampere Hall: Nordic Game Music Symphony in Concert",
+          "license": "event_only",
+          "data_source": "tampere",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "tampere:tamperetalo-moomin-atelier",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/tampere:tamperetalo-moomin-atelier/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "tampere",
+      "publisher": "6aika:tampere",
+      "_demo_offset_hours": 18,
+      "_demo_duration_hours": 3.5,
+      "name": {
+        "fi": "Muumimuseon Iltatyöpaja: Tove Janssonin Viiva ja Valo",
+        "en": "Moomin Museum Evening Atelier: Line & Shadow Workshop"
+      },
+      "short_description": {
+        "fi": "Ohjattu kuvitustyöpaja ja iltaopastus Muumimuseossa Tampere-talossa.",
+        "en": "Guided scratchboard illustration workshop and evening curator tour at the Moomin Museum."
+      },
+      "description": {
+        "fi": "<p>Ohjattu kuvitustyöpaja ja iltaopastus Muumimuseossa Tampere-talossa.</p><p>Try Tove Jansson’s classic ink and scratchboard techniques with museum educators and explore the original Moominvalley tableaux.</p>",
+        "en": "<p>Guided scratchboard illustration workshop and evening curator tour at the Moomin Museum.</p><p>Try Tove Jansson’s classic ink and scratchboard techniques with museum educators and explore the original Moominvalley tableaux.</p>"
+      },
+      "start_time": "2026-10-19T16:18:18.733Z",
+      "end_time": "2026-10-19T19:48:18.733Z",
+      "provider": {
+        "fi": "Muumimuseo • Tampereen taidemuseo",
+        "en": "Muumimuseo • Tampereen taidemuseo"
+      },
+      "info_url": {
+        "fi": "https://muumimuseo.fi",
+        "en": "https://muumimuseo.fi"
+      },
+      "offers": [
+        {
+          "is_free": false,
+          "price": {
+            "fi": "14,50 €",
+            "en": "14,50 €"
+          },
+          "description": {
+            "fi": "Liput ennakkoon tai ovelta",
+            "en": "Tickets online or at the door"
+          },
+          "info_url": {
+            "fi": "https://muumimuseo.fi",
+            "en": "https://muumimuseo.fi"
+          }
+        }
+      ],
+      "location": {
+        "id": "tampere:place-tamperetalo",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/tampere:place-tamperetalo/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "tampere",
+        "name": {
+          "fi": "Tampere-talo",
+          "en": "Tampere Hall (Tampere-talo)"
+        },
+        "street_address": {
+          "fi": "Yliopistonkatu 55",
+          "en": "Yliopistonkatu 55"
+        },
+        "address_locality": {
+          "fi": "Tampere",
+          "en": "Tampere"
+        },
+        "postal_code": "33100",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            23.7817,
+            61.4957
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:tampere",
+            "municipality": "tampere",
+            "name": {
+              "fi": "Tampere",
+              "en": "Tampere"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:tampere-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "family",
+            "en": "family"
+          }
+        },
+        {
+          "id": "yso:tampere-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "culture",
+            "en": "culture"
+          }
+        },
+        {
+          "id": "yso:tampere-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "art",
+            "en": "art"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "tampere:tamperetalo-moomin-atelier-img",
+          "url": "https://images.unsplash.com/photo-1513364776144-60967b0f800f?auto=format&fit=crop&w=1080&q=80",
+          "name": "tampere:tamperetalo-moomin-atelier.jpg",
+          "photographer_name": "Roosa Kallio / Muumimuseo",
+          "alt_text": "Moomin Museum Evening Atelier: Line & Shadow Workshop",
+          "license": "cc_by",
+          "data_source": "tampere",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "tampere:metso-architecture-talk",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/tampere:metso-architecture-talk/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "tampere",
+      "publisher": "6aika:tampere",
+      "_demo_offset_hours": -0.8,
+      "_demo_duration_hours": 2.5,
+      "name": {
+        "fi": "Pääkirjasto Metso: Raili & Reima Pietilän Arkkitehtuuri-ilta + Vinyl Lounge",
+        "en": "Main Library Metso: Nordic Organic Architecture Talk & Vinyl Set"
+      },
+      "short_description": {
+        "fi": "Arkkitehtuurikierros ja vinyylilevyjen kuunteluilta ikonisessa Pääkirjasto Metsossa.",
+        "en": "Guided architectural tour of Pietilä’s iconic capercaillie-shaped library followed by ambient vinyl sessions."
+      },
+      "description": {
+        "fi": "<p>Arkkitehtuurikierros ja vinyylilevyjen kuunteluilta ikonisessa Pääkirjasto Metsossa.</p><p>Discover the soaring copper domes and boulder-cut skylights of Pääkirjasto Metso while music librarians spin rare Finnish jazz and ambient records.</p>",
+        "en": "<p>Guided architectural tour of Pietilä’s iconic capercaillie-shaped library followed by ambient vinyl sessions.</p><p>Discover the soaring copper domes and boulder-cut skylights of Pääkirjasto Metso while music librarians spin rare Finnish jazz and ambient records.</p>"
+      },
+      "start_time": "2026-10-18T21:30:18.733Z",
+      "end_time": "2026-10-19T00:00:18.733Z",
+      "provider": {
+        "fi": "Tampereen kaupunginkirjasto",
+        "en": "Tampereen kaupunginkirjasto"
+      },
+      "info_url": {
+        "fi": "https://www.tampere.fi/kirjastot",
+        "en": "https://www.tampere.fi/kirjastot"
+      },
+      "offers": [
+        {
+          "is_free": true,
+          "price": null,
+          "description": {
+            "fi": "Vapaa pääsy",
+            "en": "Free admission"
+          },
+          "info_url": {
+            "fi": "https://www.tampere.fi/kirjastot",
+            "en": "https://www.tampere.fi/kirjastot"
+          }
+        }
+      ],
+      "location": {
+        "id": "tampere:place-metso",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/tampere:place-metso/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "tampere",
+        "name": {
+          "fi": "Pääkirjasto Metso",
+          "en": "Main Library Metso"
+        },
+        "street_address": {
+          "fi": "Pirkankatu 2",
+          "en": "Pirkankatu 2"
+        },
+        "address_locality": {
+          "fi": "Tampere",
+          "en": "Tampere"
+        },
+        "postal_code": "33210",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            23.7506,
+            61.4979
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:tampere",
+            "municipality": "tampere",
+            "name": {
+              "fi": "Tampere",
+              "en": "Tampere"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:tampere-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "culture",
+            "en": "culture"
+          }
+        },
+        {
+          "id": "yso:tampere-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "architecture",
+            "en": "architecture"
+          }
+        },
+        {
+          "id": "yso:tampere-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "music",
+            "en": "music"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "tampere:metso-architecture-talk-img",
+          "url": "https://images.unsplash.com/photo-1507842229356-51c61504d3ab?auto=format&fit=crop&w=1080&q=80",
+          "name": "tampere:metso-architecture-talk.jpg",
+          "photographer_name": "Kalle Virtanen / Tampereen kaupunginkirjasto",
+          "alt_text": "Main Library Metso: Nordic Organic Architecture Talk & Vinyl Set",
+          "license": "cc_by",
+          "data_source": "tampere",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "tampere:keskustori-light-market",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/tampere:keskustori-light-market/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "tampere",
+      "publisher": "6aika:tampere",
+      "_demo_offset_hours": -0.4,
+      "_demo_duration_hours": 4.5,
+      "name": {
+        "fi": "Keskustorin Valogalleria & Tammerkosken Street Food",
+        "en": "Keskustori Light Gallery & Tammerkoski Night Bites"
+      },
+      "short_description": {
+        "fi": "Keskustorin historialliset julkisivut heräävät eloon valotaiteella ja katuruokakojuilla.",
+        "en": "Projection mapping across historic Keskustori facades paired with artisan street food stalls."
+      },
+      "description": {
+        "fi": "<p>Keskustorin historialliset julkisivut heräävät eloon valotaiteella ja katuruokakojuilla.</p><p>Stroll from Keskustori to the Tammerkoski rapids while interactive light installations illuminate Raatihuone and Vanha kirkko.</p>",
+        "en": "<p>Projection mapping across historic Keskustori facades paired with artisan street food stalls.</p><p>Stroll from Keskustori to the Tammerkoski rapids while interactive light installations illuminate Raatihuone and Vanha kirkko.</p>"
+      },
+      "start_time": "2026-10-18T21:54:18.733Z",
+      "end_time": "2026-10-19T02:24:18.733Z",
+      "provider": {
+        "fi": "Tampereen kaupunki • Tapahtumapalvelut",
+        "en": "Tampereen kaupunki • Tapahtumapalvelut"
+      },
+      "info_url": {
+        "fi": "https://visittampere.fi",
+        "en": "https://visittampere.fi"
+      },
+      "offers": [
+        {
+          "is_free": true,
+          "price": null,
+          "description": {
+            "fi": "Vapaa pääsy",
+            "en": "Free admission"
+          },
+          "info_url": {
+            "fi": "https://visittampere.fi",
+            "en": "https://visittampere.fi"
+          }
+        }
+      ],
+      "location": {
+        "id": "tampere:place-keskustori",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/tampere:place-keskustori/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "tampere",
+        "name": {
+          "fi": "Keskustori",
+          "en": "Keskustori Central Square"
+        },
+        "street_address": {
+          "fi": "Keskustori 1",
+          "en": "Keskustori 1"
+        },
+        "address_locality": {
+          "fi": "Tampere",
+          "en": "Tampere"
+        },
+        "postal_code": "33100",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            23.7609,
+            61.4981
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:tampere",
+            "municipality": "tampere",
+            "name": {
+              "fi": "Tampere",
+              "en": "Tampere"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:tampere-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "food",
+            "en": "food"
+          }
+        },
+        {
+          "id": "yso:tampere-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "culture",
+            "en": "culture"
+          }
+        },
+        {
+          "id": "yso:tampere-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "nightlife",
+            "en": "nightlife"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "tampere:keskustori-light-market-img",
+          "url": "https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?auto=format&fit=crop&w=1080&q=80",
+          "name": "tampere:keskustori-light-market.jpg",
+          "photographer_name": "Aleksi Koskinen / Visit Tampere",
+          "alt_text": "Keskustori Light Gallery & Tammerkoski Night Bites",
+          "license": "cc_by",
+          "data_source": "tampere",
+          "@type": "ImageObject"
+        }
+      ]
+    }
+  ]
+}

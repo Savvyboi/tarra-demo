@@ -1,0 +1,640 @@
+{
+  "meta": {
+    "count": 5,
+    "next": null,
+    "previous": null,
+    "generated_at": "2026-10-18T22:18:18.739Z",
+    "schema": "6Aika LinkedEvents v1 JSON-LD"
+  },
+  "data": [
+    {
+      "id": "oulu:teatteri-northern-opera",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/oulu:teatteri-northern-opera/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "oulu",
+      "publisher": "6aika:oulu",
+      "_demo_offset_hours": -0.5,
+      "_demo_duration_hours": 3,
+      "name": {
+        "fi": "Oulun Teatteri: Pohjoisen Taivaan Alla -näytös",
+        "en": "Oulu Theatre: Under the Northern Sky Stage Premiere"
+      },
+      "short_description": {
+        "fi": "Visuaalisesti vaikuttava nykyteatteriteos Oulun teatterin suurella näyttämöllä.",
+        "en": "Striking contemporary stage production on Oulu’s iconic waterfront island theatre."
+      },
+      "description": {
+        "fi": "<p>Visuaalisesti vaikuttava nykyteatteriteos Oulun teatterin suurella näyttämöllä.</p><p>Overlooking the Pikisaari estuary, Oulun teatteri combines live Arctic folk-electronica with dramatic stagecraft in the Grand Stage.</p>",
+        "en": "<p>Striking contemporary stage production on Oulu’s iconic waterfront island theatre.</p><p>Overlooking the Pikisaari estuary, Oulun teatteri combines live Arctic folk-electronica with dramatic stagecraft in the Grand Stage.</p>"
+      },
+      "start_time": "2026-10-18T21:48:18.733Z",
+      "end_time": "2026-10-19T00:48:18.733Z",
+      "provider": {
+        "fi": "Oulun teatteri Oy",
+        "en": "Oulun teatteri Oy"
+      },
+      "info_url": {
+        "fi": "https://teatteri.ouka.fi",
+        "en": "https://teatteri.ouka.fi"
+      },
+      "offers": [
+        {
+          "is_free": false,
+          "price": {
+            "fi": "32 €",
+            "en": "32 €"
+          },
+          "description": {
+            "fi": "Liput ennakkoon tai ovelta",
+            "en": "Tickets online or at the door"
+          },
+          "info_url": {
+            "fi": "https://teatteri.ouka.fi",
+            "en": "https://teatteri.ouka.fi"
+          }
+        }
+      ],
+      "location": {
+        "id": "oulu:place-oulunteatteri",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/oulu:place-oulunteatteri/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "oulu",
+        "name": {
+          "fi": "Oulun teatteri",
+          "en": "Oulu City Theatre"
+        },
+        "street_address": {
+          "fi": "Kaarlenväylä 2",
+          "en": "Kaarlenväylä 2"
+        },
+        "address_locality": {
+          "fi": "Oulu",
+          "en": "Oulu"
+        },
+        "postal_code": "90100",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            25.4624,
+            65.0139
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:oulu",
+            "municipality": "oulu",
+            "name": {
+              "fi": "Oulu",
+              "en": "Oulu"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:oulu-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "theatre",
+            "en": "theatre"
+          }
+        },
+        {
+          "id": "yso:oulu-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "culture",
+            "en": "culture"
+          }
+        },
+        {
+          "id": "yso:oulu-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "music",
+            "en": "music"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "oulu:teatteri-northern-opera-img",
+          "url": "https://images.unsplash.com/photo-1507676184212-d03ab07a01bf?auto=format&fit=crop&w=1080&q=80",
+          "name": "oulu:teatteri-northern-opera.jpg",
+          "photographer_name": "Kati Leinonen / Oulun teatteri",
+          "alt_text": "Oulu Theatre: Under the Northern Sky Stage Premiere",
+          "license": "event_only",
+          "data_source": "oulu",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "oulu:valve-indie-film-and-beats",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/oulu:valve-indie-film-and-beats/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "oulu",
+      "publisher": "6aika:oulu",
+      "_demo_offset_hours": -0.75,
+      "_demo_duration_hours": 3.5,
+      "name": {
+        "fi": "Kulttuuritalo Valve: Arctic Lens -lyhytelokuvailta & DJ-klubi",
+        "en": "Cultural Centre Valve: Arctic Lens Short Film Night & Live Beats"
+      },
+      "short_description": {
+        "fi": "Pohjoisen elokuvantekijöiden lyhytelokuvia Studio-salissa ja keskustelua Valven Paljetissa.",
+        "en": "Northern cinema showcase at Studio Valve followed by lo-fi vinyl sets and filmmaker Q&A."
+      },
+      "description": {
+        "fi": "<p>Pohjoisen elokuvantekijöiden lyhytelokuvia Studio-salissa ja keskustelua Valven Paljetissa.</p><p>Discover bold new short films from Oulu2026 European Capital of Culture creators inside historic Kulttuuritalo Valve.</p>",
+        "en": "<p>Northern cinema showcase at Studio Valve followed by lo-fi vinyl sets and filmmaker Q&A.</p><p>Discover bold new short films from Oulu2026 European Capital of Culture creators inside historic Kulttuuritalo Valve.</p>"
+      },
+      "start_time": "2026-10-18T21:33:18.733Z",
+      "end_time": "2026-10-19T01:03:18.733Z",
+      "provider": {
+        "fi": "Kulttuuritalo Valve • Oulu2026",
+        "en": "Kulttuuritalo Valve • Oulu2026"
+      },
+      "info_url": {
+        "fi": "https://www.kulttuurivalve.fi",
+        "en": "https://www.kulttuurivalve.fi"
+      },
+      "offers": [
+        {
+          "is_free": true,
+          "price": null,
+          "description": {
+            "fi": "Vapaa pääsy",
+            "en": "Free admission"
+          },
+          "info_url": {
+            "fi": "https://www.kulttuurivalve.fi",
+            "en": "https://www.kulttuurivalve.fi"
+          }
+        }
+      ],
+      "location": {
+        "id": "oulu:place-valve",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/oulu:place-valve/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "oulu",
+        "name": {
+          "fi": "Kulttuuritalo Valve",
+          "en": "Cultural Centre Valve"
+        },
+        "street_address": {
+          "fi": "Hallituskatu 7",
+          "en": "Hallituskatu 7"
+        },
+        "address_locality": {
+          "fi": "Oulu",
+          "en": "Oulu"
+        },
+        "postal_code": "90100",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            25.4713,
+            65.0136
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:oulu",
+            "municipality": "oulu",
+            "name": {
+              "fi": "Oulu",
+              "en": "Oulu"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:oulu-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "culture",
+            "en": "culture"
+          }
+        },
+        {
+          "id": "yso:oulu-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "film",
+            "en": "film"
+          }
+        },
+        {
+          "id": "yso:oulu-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "music",
+            "en": "music"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "oulu:valve-indie-film-and-beats-img",
+          "url": "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1080&q=80",
+          "name": "oulu:valve-indie-film-and-beats.jpg",
+          "photographer_name": "Harri Hemmilä / Kulttuuritalo Valve",
+          "alt_text": "Cultural Centre Valve: Arctic Lens Short Film Night & Live Beats",
+          "license": "cc_by",
+          "data_source": "oulu",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "oulu:valve-air-guitar-workshop",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/oulu:valve-air-guitar-workshop/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "oulu",
+      "publisher": "6aika:oulu",
+      "_demo_offset_hours": 1.5,
+      "_demo_duration_hours": 2.5,
+      "name": {
+        "fi": "Ilmakitaran ja Lavakarismatyöpaja @ Valve",
+        "en": "Oulu Air Guitar & Stage Presence Open Jam"
+      },
+      "short_description": {
+        "fi": "Oululaisen ilmakitaraperinteen hengessä järjestettävä hauska esiintymistyöpaja.",
+        "en": "High-energy stage charisma and air guitar jam inspired by Oulu’s world-famous festival."
+      },
+      "description": {
+        "fi": "<p>Oululaisen ilmakitaraperinteen hengessä järjestettävä hauska esiintymistyöpaja.</p><p>Warm up your invisible fretboard with past finalists and local musicians in a joyful, zero-barrier evening session.</p>",
+        "en": "<p>High-energy stage charisma and air guitar jam inspired by Oulu’s world-famous festival.</p><p>Warm up your invisible fretboard with past finalists and local musicians in a joyful, zero-barrier evening session.</p>"
+      },
+      "start_time": "2026-10-18T23:48:18.733Z",
+      "end_time": "2026-10-19T02:18:18.733Z",
+      "provider": {
+        "fi": "Kulttuuritalo Valve",
+        "en": "Kulttuuritalo Valve"
+      },
+      "info_url": {
+        "fi": "https://www.kulttuurivalve.fi",
+        "en": "https://www.kulttuurivalve.fi"
+      },
+      "offers": [
+        {
+          "is_free": true,
+          "price": null,
+          "description": {
+            "fi": "Vapaa pääsy",
+            "en": "Free admission"
+          },
+          "info_url": {
+            "fi": "https://www.kulttuurivalve.fi",
+            "en": "https://www.kulttuurivalve.fi"
+          }
+        }
+      ],
+      "location": {
+        "id": "oulu:place-valve",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/oulu:place-valve/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "oulu",
+        "name": {
+          "fi": "Kulttuuritalo Valve",
+          "en": "Cultural Centre Valve"
+        },
+        "street_address": {
+          "fi": "Hallituskatu 7",
+          "en": "Hallituskatu 7"
+        },
+        "address_locality": {
+          "fi": "Oulu",
+          "en": "Oulu"
+        },
+        "postal_code": "90100",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            25.4713,
+            65.0136
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:oulu",
+            "municipality": "oulu",
+            "name": {
+              "fi": "Oulu",
+              "en": "Oulu"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:oulu-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "music",
+            "en": "music"
+          }
+        },
+        {
+          "id": "yso:oulu-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "nightlife",
+            "en": "nightlife"
+          }
+        },
+        {
+          "id": "yso:oulu-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "culture",
+            "en": "culture"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "oulu:valve-air-guitar-workshop-img",
+          "url": "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=1080&q=80",
+          "name": "oulu:valve-air-guitar-workshop.jpg",
+          "photographer_name": "Juha Tuominen / Oulu Cultural Events",
+          "alt_text": "Oulu Air Guitar & Stage Presence Open Jam",
+          "license": "cc_by",
+          "data_source": "oulu",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "oulu:ouluhalli-arctic-futsal-climb",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/oulu:ouluhalli-arctic-futsal-climb/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "oulu",
+      "publisher": "6aika:oulu",
+      "_demo_offset_hours": -0.25,
+      "_demo_duration_hours": 3,
+      "name": {
+        "fi": "Ouluhalli Action Night: Yökiipeily & Arctic Street Hoops",
+        "en": "Ouluhalli Action Night: Bouldering Jam & 3x3 Street Hoops"
+      },
+      "short_description": {
+        "fi": "Avoin iltavuoro Ouluhallin uudella puolella: kiipeilyseinä, 3x3-koristurnaus ja musiikkia.",
+        "en": "Late-evening community sports jam with bouldering routes, 3x3 basketball, and live DJ."
+      },
+      "description": {
+        "fi": "<p>Avoin iltavuoro Ouluhallin uudella puolella: kiipeilyseinä, 3x3-koristurnaus ja musiikkia.</p><p>Test new climbing problems and join pick-up 3x3 games under Ouluhalli’s iconic wooden dome.</p>",
+        "en": "<p>Late-evening community sports jam with bouldering routes, 3x3 basketball, and live DJ.</p><p>Test new climbing problems and join pick-up 3x3 games under Ouluhalli’s iconic wooden dome.</p>"
+      },
+      "start_time": "2026-10-18T22:03:18.733Z",
+      "end_time": "2026-10-19T01:03:18.733Z",
+      "provider": {
+        "fi": "Oulun kaupungin liikuntapalvelut",
+        "en": "Oulun kaupungin liikuntapalvelut"
+      },
+      "info_url": {
+        "fi": "https://www.ouka.fi/ouluhalli",
+        "en": "https://www.ouka.fi/ouluhalli"
+      },
+      "offers": [
+        {
+          "is_free": false,
+          "price": {
+            "fi": "6 €",
+            "en": "6 €"
+          },
+          "description": {
+            "fi": "Liput ennakkoon tai ovelta",
+            "en": "Tickets online or at the door"
+          },
+          "info_url": {
+            "fi": "https://www.ouka.fi/ouluhalli",
+            "en": "https://www.ouka.fi/ouluhalli"
+          }
+        }
+      ],
+      "location": {
+        "id": "oulu:place-ouluhalli",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/oulu:place-ouluhalli/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "oulu",
+        "name": {
+          "fi": "Ouluhalli",
+          "en": "Ouluhalli Arena"
+        },
+        "street_address": {
+          "fi": "Ouluhallintie 20",
+          "en": "Ouluhallintie 20"
+        },
+        "address_locality": {
+          "fi": "Oulu",
+          "en": "Oulu"
+        },
+        "postal_code": "90130",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            25.4998,
+            65.0046
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:oulu",
+            "municipality": "oulu",
+            "name": {
+              "fi": "Oulu",
+              "en": "Oulu"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:oulu-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "sports",
+            "en": "sports"
+          }
+        },
+        {
+          "id": "yso:oulu-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "exercise",
+            "en": "exercise"
+          }
+        },
+        {
+          "id": "yso:oulu-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "youth",
+            "en": "youth"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "oulu:ouluhalli-arctic-futsal-climb-img",
+          "url": "https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=1080&q=80",
+          "name": "oulu:ouluhalli-arctic-futsal-climb.jpg",
+          "photographer_name": "Matti Niemelä / Oulun liikuntapalvelut",
+          "alt_text": "Ouluhalli Action Night: Bouldering Jam & 3x3 Street Hoops",
+          "license": "cc_by",
+          "data_source": "oulu",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "oulu:nallikari-aurora-bonfire",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/oulu:nallikari-aurora-bonfire/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "oulu",
+      "publisher": "6aika:oulu",
+      "_demo_offset_hours": -0.6,
+      "_demo_duration_hours": 3.5,
+      "name": {
+        "fi": "Nallikarin Majakka: Revontulivaellus & Rantatulistelut",
+        "en": "Nallikari Lighthouse: Coastal Aurora Walk & Beachside Fire Pit"
+      },
+      "short_description": {
+        "fi": "Ohjattu iltakävely Nallikarin majakalle, tähtitaivaan valokuvausta ja lämmintä glögiä.",
+        "en": "Guided twilight walk along Nallikari beach to the lighthouse with night-sky photography tips."
+      },
+      "description": {
+        "fi": "<p>Ohjattu iltakävely Nallikarin majakalle, tähtitaivaan valokuvausta ja lämmintä glögiä.</p><p>Gather by the Bothnian Bay shoreline for coastal storytelling, roasted campfire snacks, and aurora borealis skywatching.</p>",
+        "en": "<p>Guided twilight walk along Nallikari beach to the lighthouse with night-sky photography tips.</p><p>Gather by the Bothnian Bay shoreline for coastal storytelling, roasted campfire snacks, and aurora borealis skywatching.</p>"
+      },
+      "start_time": "2026-10-18T21:42:18.733Z",
+      "end_time": "2026-10-19T01:12:18.733Z",
+      "provider": {
+        "fi": "Visit Oulu • Nallikari Safaris",
+        "en": "Visit Oulu • Nallikari Safaris"
+      },
+      "info_url": {
+        "fi": "https://nallikari.fi",
+        "en": "https://nallikari.fi"
+      },
+      "offers": [
+        {
+          "is_free": true,
+          "price": null,
+          "description": {
+            "fi": "Vapaa pääsy",
+            "en": "Free admission"
+          },
+          "info_url": {
+            "fi": "https://nallikari.fi",
+            "en": "https://nallikari.fi"
+          }
+        }
+      ],
+      "location": {
+        "id": "oulu:place-nallikari",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/oulu:place-nallikari/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "oulu",
+        "name": {
+          "fi": "Nallikari (Majakka)",
+          "en": "Nallikari Beach & Lighthouse"
+        },
+        "street_address": {
+          "fi": "Nallikarinranta 15",
+          "en": "Nallikarinranta 15"
+        },
+        "address_locality": {
+          "fi": "Oulu",
+          "en": "Oulu"
+        },
+        "postal_code": "90510",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            25.4117,
+            65.0315
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:oulu",
+            "municipality": "oulu",
+            "name": {
+              "fi": "Oulu",
+              "en": "Oulu"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:oulu-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "nature",
+            "en": "nature"
+          }
+        },
+        {
+          "id": "yso:oulu-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "outdoors",
+            "en": "outdoors"
+          }
+        },
+        {
+          "id": "yso:oulu-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "family",
+            "en": "family"
+          }
+        },
+        {
+          "id": "yso:oulu-3",
+          "@type": "Keyword",
+          "name": {
+            "fi": "food",
+            "en": "food"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "oulu:nallikari-aurora-bonfire-img",
+          "url": "https://images.unsplash.com/photo-1531366936337-7c912a4589a7?auto=format&fit=crop&w=1080&q=80",
+          "name": "oulu:nallikari-aurora-bonfire.jpg",
+          "photographer_name": "Sami Kärkkäinen / Visit Oulu",
+          "alt_text": "Nallikari Lighthouse: Coastal Aurora Walk & Beachside Fire Pit",
+          "license": "event_only",
+          "data_source": "oulu",
+          "@type": "ImageObject"
+        }
+      ]
+    }
+  ]
+}

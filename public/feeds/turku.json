@@ -1,0 +1,902 @@
+{
+  "meta": {
+    "count": 7,
+    "next": null,
+    "previous": null,
+    "generated_at": "2026-10-18T22:18:18.735Z",
+    "schema": "6Aika LinkedEvents v1 JSON-LD"
+  },
+  "data": [
+    {
+      "id": "turku:logomo-aurora-sessions",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/turku:logomo-aurora-sessions/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "turku",
+      "publisher": "6aika:turku",
+      "_demo_offset_hours": -0.5,
+      "_demo_duration_hours": 4,
+      "name": {
+        "fi": "Logomo Electronic & Visual Night: Aurora Synth",
+        "en": "Logomo Electronic & Visual Night: Aurora Synth"
+      },
+      "short_description": {
+        "fi": "Pohjoismainen elektronisen musiikin ja valotaiteen ilta Logomon salissa.",
+        "en": "Immersive Nordic electronic music, spatial audio, and laser projection show at Logomo."
+      },
+      "description": {
+        "fi": "<p>Pohjoismainen elektronisen musiikin ja valotaiteen ilta Logomon salissa.</p><p>Experience spatial 360° soundscapes and live modular synth performances inside Logomo Hall with visual artists from across the Baltic Sea region.</p>",
+        "en": "<p>Immersive Nordic electronic music, spatial audio, and laser projection show at Logomo.</p><p>Experience spatial 360° soundscapes and live modular synth performances inside Logomo Hall with visual artists from across the Baltic Sea region.</p>"
+      },
+      "start_time": "2026-10-18T21:48:18.732Z",
+      "end_time": "2026-10-19T01:48:18.732Z",
+      "provider": {
+        "fi": "Logomo Oy",
+        "en": "Logomo Oy"
+      },
+      "info_url": {
+        "fi": "https://logomo.fi",
+        "en": "https://logomo.fi"
+      },
+      "offers": [
+        {
+          "is_free": false,
+          "price": {
+            "fi": "24 €",
+            "en": "24 €"
+          },
+          "description": {
+            "fi": "Liput ennakkoon tai ovelta",
+            "en": "Tickets online or at the door"
+          },
+          "info_url": {
+            "fi": "https://logomo.fi",
+            "en": "https://logomo.fi"
+          }
+        }
+      ],
+      "location": {
+        "id": "turku:place-logomo",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/turku:place-logomo/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "turku",
+        "name": {
+          "fi": "Logomo",
+          "en": "Logomo Cultural Hub"
+        },
+        "street_address": {
+          "fi": "Junakatu 9",
+          "en": "Junakatu 9"
+        },
+        "address_locality": {
+          "fi": "Turku",
+          "en": "Turku"
+        },
+        "postal_code": "20100",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            22.2569,
+            60.4557
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:turku",
+            "municipality": "turku",
+            "name": {
+              "fi": "Turku",
+              "en": "Turku"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:turku-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "music",
+            "en": "music"
+          }
+        },
+        {
+          "id": "yso:turku-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "concert",
+            "en": "concert"
+          }
+        },
+        {
+          "id": "yso:turku-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "electronic",
+            "en": "electronic"
+          }
+        },
+        {
+          "id": "yso:turku-3",
+          "@type": "Keyword",
+          "name": {
+            "fi": "nightlife",
+            "en": "nightlife"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "turku:logomo-aurora-sessions-img",
+          "url": "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1080&q=80",
+          "name": "turku:logomo-aurora-sessions.jpg",
+          "photographer_name": "Aino Lindholm / Logomo Media",
+          "alt_text": "Logomo Electronic & Visual Night: Aurora Synth",
+          "license": "event_only",
+          "data_source": "turku",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "turku:logomo-design-pop",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/turku:logomo-design-pop/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "turku",
+      "publisher": "6aika:turku",
+      "_demo_offset_hours": 1.5,
+      "_demo_duration_hours": 3.5,
+      "name": {
+        "fi": "Archipelago Creative Tech & Design Expo",
+        "en": "Archipelago Creative Tech & Design Expo"
+      },
+      "short_description": {
+        "fi": "Pelinkehittäjien, muotoilijoiden ja digitaalisen taiteen avoin demopäivä Logomossa.",
+        "en": "Interactive demos from Turku game studios, sound designers, and creative technologists."
+      },
+      "description": {
+        "fi": "<p>Pelinkehittäjien, muotoilijoiden ja digitaalisen taiteen avoin demopäivä Logomossa.</p><p>Try hands-on prototypes, VR installations, and sustainable Nordic product design in the Logomo Byrå atrium.</p>",
+        "en": "<p>Interactive demos from Turku game studios, sound designers, and creative technologists.</p><p>Try hands-on prototypes, VR installations, and sustainable Nordic product design in the Logomo Byrå atrium.</p>"
+      },
+      "start_time": "2026-10-18T23:48:18.733Z",
+      "end_time": "2026-10-19T03:18:18.733Z",
+      "provider": {
+        "fi": "Turku Business Region",
+        "en": "Turku Business Region"
+      },
+      "info_url": {
+        "fi": "https://logomo.fi",
+        "en": "https://logomo.fi"
+      },
+      "offers": [
+        {
+          "is_free": true,
+          "price": null,
+          "description": {
+            "fi": "Vapaa pääsy",
+            "en": "Free admission"
+          },
+          "info_url": {
+            "fi": "https://logomo.fi",
+            "en": "https://logomo.fi"
+          }
+        }
+      ],
+      "location": {
+        "id": "turku:place-logomo",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/turku:place-logomo/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "turku",
+        "name": {
+          "fi": "Logomo",
+          "en": "Logomo Cultural Hub"
+        },
+        "street_address": {
+          "fi": "Junakatu 9",
+          "en": "Junakatu 9"
+        },
+        "address_locality": {
+          "fi": "Turku",
+          "en": "Turku"
+        },
+        "postal_code": "20100",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            22.2569,
+            60.4557
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:turku",
+            "municipality": "turku",
+            "name": {
+              "fi": "Turku",
+              "en": "Turku"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:turku-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "culture",
+            "en": "culture"
+          }
+        },
+        {
+          "id": "yso:turku-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "exhibition",
+            "en": "exhibition"
+          }
+        },
+        {
+          "id": "yso:turku-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "design",
+            "en": "design"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "turku:logomo-design-pop-img",
+          "url": "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=1080&q=80",
+          "name": "turku:logomo-design-pop.jpg",
+          "photographer_name": "Mikko Rantanen / Turku Science Park",
+          "alt_text": "Archipelago Creative Tech & Design Expo",
+          "license": "cc_by",
+          "data_source": "turku",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "turku:teatteri-riverfront-gala",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/turku:teatteri-riverfront-gala/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "turku",
+      "publisher": "6aika:turku",
+      "_demo_offset_hours": -0.25,
+      "_demo_duration_hours": 3,
+      "name": {
+        "fi": "Turun Kaupunginteatteri: Aurajoen Yö -ensi-ilta",
+        "en": "Turku City Theatre: Night on the Aura River Premiere"
+      },
+      "short_description": {
+        "fi": "Moderni musiikkiteatteriteos Aurajoen rannalla upein valolavastuksin.",
+        "en": "Contemporary musical drama staged on the banks of the Aura River with live orchestra."
+      },
+      "description": {
+        "fi": "<p>Moderni musiikkiteatteriteos Aurajoen rannalla upein valolavastuksin.</p><p>Turun kaupunginteatteri presents an original waterfront production blending contemporary choreography, orchestral score, and archival city projections.</p>",
+        "en": "<p>Contemporary musical drama staged on the banks of the Aura River with live orchestra.</p><p>Turun kaupunginteatteri presents an original waterfront production blending contemporary choreography, orchestral score, and archival city projections.</p>"
+      },
+      "start_time": "2026-10-18T22:03:18.733Z",
+      "end_time": "2026-10-19T01:03:18.733Z",
+      "provider": {
+        "fi": "Turun Kaupunginteatteri",
+        "en": "Turun Kaupunginteatteri"
+      },
+      "info_url": {
+        "fi": "https://tkteatteri.fi",
+        "en": "https://tkteatteri.fi"
+      },
+      "offers": [
+        {
+          "is_free": false,
+          "price": {
+            "fi": "36 €",
+            "en": "36 €"
+          },
+          "description": {
+            "fi": "Liput ennakkoon tai ovelta",
+            "en": "Tickets online or at the door"
+          },
+          "info_url": {
+            "fi": "https://tkteatteri.fi",
+            "en": "https://tkteatteri.fi"
+          }
+        }
+      ],
+      "location": {
+        "id": "turku:place-kaupunginteatteri",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/turku:place-kaupunginteatteri/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "turku",
+        "name": {
+          "fi": "Turun kaupunginteatteri",
+          "en": "Turku City Theatre"
+        },
+        "street_address": {
+          "fi": "Itäinen Rantakatu 14",
+          "en": "Itäinen Rantakatu 14"
+        },
+        "address_locality": {
+          "fi": "Turku",
+          "en": "Turku"
+        },
+        "postal_code": "20800",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            22.2662,
+            60.4465
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:turku",
+            "municipality": "turku",
+            "name": {
+              "fi": "Turku",
+              "en": "Turku"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:turku-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "theatre",
+            "en": "theatre"
+          }
+        },
+        {
+          "id": "yso:turku-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "culture",
+            "en": "culture"
+          }
+        },
+        {
+          "id": "yso:turku-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "music",
+            "en": "music"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "turku:teatteri-riverfront-gala-img",
+          "url": "https://images.unsplash.com/photo-1503095396549-807759245b35?auto=format&fit=crop&w=1080&q=80",
+          "name": "turku:teatteri-riverfront-gala.jpg",
+          "photographer_name": "Otto-Ville Väätäinen / Turun kaupunginteatteri",
+          "alt_text": "Turku City Theatre: Night on the Aura River Premiere",
+          "license": "event_only",
+          "data_source": "turku",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "turku:kirjasto-jazz-courtyard",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/turku:kirjasto-jazz-courtyard/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "turku",
+      "publisher": "6aika:turku",
+      "_demo_offset_hours": -1,
+      "_demo_duration_hours": 2.5,
+      "name": {
+        "fi": "Pääkirjaston Valopiha Acoustic & Poetry Jam",
+        "en": "Main Library Courtyard Acoustic & Poetry Jam"
+      },
+      "short_description": {
+        "fi": "Ilmainen akustinen konsertti ja lavarunousilta Turun pääkirjaston sisäpihalla.",
+        "en": "Free evening of Nordic acoustic jazz and multilingual spoken word in the library courtyard."
+      },
+      "description": {
+        "fi": "<p>Ilmainen akustinen konsertti ja lavarunousilta Turun pääkirjaston sisäpihalla.</p><p>Grab a coffee at Café Sirius and enjoy live upright bass, vibraphone, and poetry performances at Turun pääkirjasto.</p>",
+        "en": "<p>Free evening of Nordic acoustic jazz and multilingual spoken word in the library courtyard.</p><p>Grab a coffee at Café Sirius and enjoy live upright bass, vibraphone, and poetry performances at Turun pääkirjasto.</p>"
+      },
+      "start_time": "2026-10-18T21:18:18.733Z",
+      "end_time": "2026-10-18T23:48:18.733Z",
+      "provider": {
+        "fi": "Turun kaupunginkirjasto",
+        "en": "Turun kaupunginkirjasto"
+      },
+      "info_url": {
+        "fi": "https://www.turku.fi/kirjasto",
+        "en": "https://www.turku.fi/kirjasto"
+      },
+      "offers": [
+        {
+          "is_free": true,
+          "price": null,
+          "description": {
+            "fi": "Vapaa pääsy",
+            "en": "Free admission"
+          },
+          "info_url": {
+            "fi": "https://www.turku.fi/kirjasto",
+            "en": "https://www.turku.fi/kirjasto"
+          }
+        }
+      ],
+      "location": {
+        "id": "turku:place-paakirjasto",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/turku:place-paakirjasto/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "turku",
+        "name": {
+          "fi": "Turun pääkirjasto",
+          "en": "Turku Main Library"
+        },
+        "street_address": {
+          "fi": "Linnankatu 2",
+          "en": "Linnankatu 2"
+        },
+        "address_locality": {
+          "fi": "Turku",
+          "en": "Turku"
+        },
+        "postal_code": "20100",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            22.2709,
+            60.4505
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:turku",
+            "municipality": "turku",
+            "name": {
+              "fi": "Turku",
+              "en": "Turku"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:turku-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "culture",
+            "en": "culture"
+          }
+        },
+        {
+          "id": "yso:turku-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "music",
+            "en": "music"
+          }
+        },
+        {
+          "id": "yso:turku-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "literature",
+            "en": "literature"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "turku:kirjasto-jazz-courtyard-img",
+          "url": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=1080&q=80",
+          "name": "turku:kirjasto-jazz-courtyard.jpg",
+          "photographer_name": "Sanna Korhonen / Turun kaupunki",
+          "alt_text": "Main Library Courtyard Acoustic & Poetry Jam",
+          "license": "cc_by",
+          "data_source": "turku",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "turku:kupittaa-sunset-run",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/turku:kupittaa-sunset-run/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "turku",
+      "publisher": "6aika:turku",
+      "_demo_offset_hours": 0.25,
+      "_demo_duration_hours": 2.5,
+      "name": {
+        "fi": "Kupittaanpuisto Neon Night Run & Park Yoga",
+        "en": "Kupittaanpuisto Neon Night Run & Park Yoga"
+      },
+      "short_description": {
+        "fi": "Yhteisöllinen 5 km iltalenkki, DJ-piste ja palauttava puistojooga Kupittaalla.",
+        "en": "Community 5K twilight social run with LED wristbands, live DJ pace-car, and recovery stretch."
+      },
+      "description": {
+        "fi": "<p>Yhteisöllinen 5 km iltalenkki, DJ-piste ja palauttava puistojooga Kupittaalla.</p><p>Meet by the Kupittaa Pavilion for a friendly all-paces 5K loop around Finland’s oldest urban park followed by warm berry juice and mobility flow.</p>",
+        "en": "<p>Community 5K twilight social run with LED wristbands, live DJ pace-car, and recovery stretch.</p><p>Meet by the Kupittaa Pavilion for a friendly all-paces 5K loop around Finland’s oldest urban park followed by warm berry juice and mobility flow.</p>"
+      },
+      "start_time": "2026-10-18T22:33:18.733Z",
+      "end_time": "2026-10-19T01:03:18.733Z",
+      "provider": {
+        "fi": "Turun liikuntapalvelut",
+        "en": "Turun liikuntapalvelut"
+      },
+      "info_url": {
+        "fi": "https://www.turku.fi/liikunta",
+        "en": "https://www.turku.fi/liikunta"
+      },
+      "offers": [
+        {
+          "is_free": true,
+          "price": null,
+          "description": {
+            "fi": "Vapaa pääsy",
+            "en": "Free admission"
+          },
+          "info_url": {
+            "fi": "https://www.turku.fi/liikunta",
+            "en": "https://www.turku.fi/liikunta"
+          }
+        }
+      ],
+      "location": {
+        "id": "turku:place-kupittaanpuisto",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/turku:place-kupittaanpuisto/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "turku",
+        "name": {
+          "fi": "Kupittaanpuisto",
+          "en": "Kupittaa Park Pavilion"
+        },
+        "street_address": {
+          "fi": "Kupittaankatu 2",
+          "en": "Kupittaankatu 2"
+        },
+        "address_locality": {
+          "fi": "Turku",
+          "en": "Turku"
+        },
+        "postal_code": "20520",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            22.2925,
+            60.4448
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:turku",
+            "municipality": "turku",
+            "name": {
+              "fi": "Turku",
+              "en": "Turku"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:turku-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "sports",
+            "en": "sports"
+          }
+        },
+        {
+          "id": "yso:turku-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "exercise",
+            "en": "exercise"
+          }
+        },
+        {
+          "id": "yso:turku-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "nature",
+            "en": "nature"
+          }
+        },
+        {
+          "id": "yso:turku-3",
+          "@type": "Keyword",
+          "name": {
+            "fi": "outdoors",
+            "en": "outdoors"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "turku:kupittaa-sunset-run-img",
+          "url": "https://images.unsplash.com/photo-1552674605-db6ffd4facb5?auto=format&fit=crop&w=1080&q=80",
+          "name": "turku:kupittaa-sunset-run.jpg",
+          "photographer_name": "Joonas Mäkinen / Liikuntapalvelut",
+          "alt_text": "Kupittaanpuisto Neon Night Run & Park Yoga",
+          "license": "cc_by",
+          "data_source": "turku",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "turku:kupittaa-family-adventure",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/turku:kupittaa-family-adventure/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "turku",
+      "publisher": "6aika:turku",
+      "_demo_offset_hours": 22,
+      "_demo_duration_hours": 4,
+      "name": {
+        "fi": "Seikkailupuiston Valoseikkailu Perheille",
+        "en": "Adventure Park Lantern Quest for Families"
+      },
+      "short_description": {
+        "fi": "Koko perheen elämyksellinen lyhtyseikkailu ja musiikkityöpaja Kupittaan Seikkailupuistossa.",
+        "en": "Interactive lantern trail, puppet theatre, and outdoor rhythm workshop for children and families."
+      },
+      "description": {
+        "fi": "<p>Koko perheen elämyksellinen lyhtyseikkailu ja musiikkityöpaja Kupittaan Seikkailupuistossa.</p><p>Explore illuminated treehouse stations, craft recycled paper lanterns, and join the family sing-along in Seikkailupuisto.</p>",
+        "en": "<p>Interactive lantern trail, puppet theatre, and outdoor rhythm workshop for children and families.</p><p>Explore illuminated treehouse stations, craft recycled paper lanterns, and join the family sing-along in Seikkailupuisto.</p>"
+      },
+      "start_time": "2026-10-19T20:18:18.733Z",
+      "end_time": "2026-10-20T00:18:18.733Z",
+      "provider": {
+        "fi": "Seikkailupuisto Turku",
+        "en": "Seikkailupuisto Turku"
+      },
+      "info_url": {
+        "fi": "https://www.turku.fi/seikkailupuisto",
+        "en": "https://www.turku.fi/seikkailupuisto"
+      },
+      "offers": [
+        {
+          "is_free": true,
+          "price": null,
+          "description": {
+            "fi": "Vapaa pääsy",
+            "en": "Free admission"
+          },
+          "info_url": {
+            "fi": "https://www.turku.fi/seikkailupuisto",
+            "en": "https://www.turku.fi/seikkailupuisto"
+          }
+        }
+      ],
+      "location": {
+        "id": "turku:place-kupittaanpuisto",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/turku:place-kupittaanpuisto/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "turku",
+        "name": {
+          "fi": "Kupittaanpuisto",
+          "en": "Kupittaa Park Pavilion"
+        },
+        "street_address": {
+          "fi": "Kupittaankatu 2",
+          "en": "Kupittaankatu 2"
+        },
+        "address_locality": {
+          "fi": "Turku",
+          "en": "Turku"
+        },
+        "postal_code": "20520",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            22.2925,
+            60.4448
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:turku",
+            "municipality": "turku",
+            "name": {
+              "fi": "Turku",
+              "en": "Turku"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:turku-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "family",
+            "en": "family"
+          }
+        },
+        {
+          "id": "yso:turku-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "children",
+            "en": "children"
+          }
+        },
+        {
+          "id": "yso:turku-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "culture",
+            "en": "culture"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "turku:kupittaa-family-adventure-img",
+          "url": "https://images.unsplash.com/photo-1472653431158-6364773b2a56?auto=format&fit=crop&w=1080&q=80",
+          "name": "turku:kupittaa-family-adventure.jpg",
+          "photographer_name": "Laura Niemi / Seikkailupuisto",
+          "alt_text": "Adventure Park Lantern Quest for Families",
+          "license": "cc_by",
+          "data_source": "turku",
+          "@type": "ImageObject"
+        }
+      ]
+    },
+    {
+      "id": "turku:aurajoki-street-food",
+      "@id": "https://api.hel.fi/linkedevents/v1/event/turku:aurajoki-street-food/",
+      "@context": "http://schema.org",
+      "@type": "Event/LinkedEvent",
+      "event_status": "EventScheduled",
+      "data_source": "turku",
+      "publisher": "6aika:turku",
+      "_demo_offset_hours": -0.75,
+      "_demo_duration_hours": 4.5,
+      "name": {
+        "fi": "Aurajoen Yömarkkinat & Saaristolaisruokajuhla",
+        "en": "Aura River Night Market & Archipelago Street Food"
+      },
+      "short_description": {
+        "fi": "Lähiruokaa, saaristolaisannoksia ja elävää musiikkia Förin ja Tuomiokirkon välillä.",
+        "en": "Artisanal archipelago street food, smoked fish, craft mocktails, and riverboat DJ sets."
+      },
+      "description": {
+        "fi": "<p>Lähiruokaa, saaristolaisannoksia ja elävää musiikkia Förin ja Tuomiokirkon välillä.</p><p>Over 25 local Archipelago producers and street kitchens line the historic Aura River promenade with glowing lantern boats.</p>",
+        "en": "<p>Artisanal archipelago street food, smoked fish, craft mocktails, and riverboat DJ sets.</p><p>Over 25 local Archipelago producers and street kitchens line the historic Aura River promenade with glowing lantern boats.</p>"
+      },
+      "start_time": "2026-10-18T21:33:18.733Z",
+      "end_time": "2026-10-19T02:03:18.733Z",
+      "provider": {
+        "fi": "Turku Food & Wine Collective",
+        "en": "Turku Food & Wine Collective"
+      },
+      "info_url": {
+        "fi": "https://visitturku.fi",
+        "en": "https://visitturku.fi"
+      },
+      "offers": [
+        {
+          "is_free": true,
+          "price": null,
+          "description": {
+            "fi": "Vapaa pääsy",
+            "en": "Free admission"
+          },
+          "info_url": {
+            "fi": "https://visitturku.fi",
+            "en": "https://visitturku.fi"
+          }
+        }
+      ],
+      "location": {
+        "id": "turku:place-aurariver",
+        "@id": "https://api.hel.fi/linkedevents/v1/place/turku:place-aurariver/",
+        "@context": "http://schema.org",
+        "@type": "Place",
+        "data_source": "turku",
+        "name": {
+          "fi": "Aurajoen ranta (Vähätori)",
+          "en": "Aura River Promenade (Vähätori)"
+        },
+        "street_address": {
+          "fi": "Linnankatu 3",
+          "en": "Linnankatu 3"
+        },
+        "address_locality": {
+          "fi": "Turku",
+          "en": "Turku"
+        },
+        "postal_code": "20100",
+        "position": {
+          "type": "Point",
+          "coordinates": [
+            22.2701,
+            60.4514
+          ]
+        },
+        "divisions": [
+          {
+            "type": "muni",
+            "ocd_id": "ocd-division/country:fi/kunta:turku",
+            "municipality": "turku",
+            "name": {
+              "fi": "Turku",
+              "en": "Turku"
+            }
+          }
+        ]
+      },
+      "keywords": [
+        {
+          "id": "yso:turku-0",
+          "@type": "Keyword",
+          "name": {
+            "fi": "food",
+            "en": "food"
+          }
+        },
+        {
+          "id": "yso:turku-1",
+          "@type": "Keyword",
+          "name": {
+            "fi": "market",
+            "en": "market"
+          }
+        },
+        {
+          "id": "yso:turku-2",
+          "@type": "Keyword",
+          "name": {
+            "fi": "music",
+            "en": "music"
+          }
+        },
+        {
+          "id": "yso:turku-3",
+          "@type": "Keyword",
+          "name": {
+            "fi": "nightlife",
+            "en": "nightlife"
+          }
+        }
+      ],
+      "images": [
+        {
+          "id": "turku:aurajoki-street-food-img",
+          "url": "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1080&q=80",
+          "name": "turku:aurajoki-street-food.jpg",
+          "photographer_name": "Henrik Lindqvist / Visit Turku Archipelago",
+          "alt_text": "Aura River Night Market & Archipelago Street Food",
+          "license": "event_only",
+          "data_source": "turku",
+          "@type": "ImageObject"
+        }
+      ]
+    }
+  ]
+}

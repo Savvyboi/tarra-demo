@@ -17,6 +17,24 @@ interface SnapMapProps {
   mapStyle: MapStyleId;
   userLocation: [number, number] | null;
   onSelectVenueGroup: (group: VenueStoryGroup) => void;
+  onMapError?: (reason: string) => void;
+  onSwitchToList?: () => void;
+}
+
+function isWebGLSupported(): boolean {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return false;
+  }
+  try {
+    const canvas = document.createElement('canvas');
+    const gl =
+      canvas.getContext('webgl2') ||
+      canvas.getContext('webgl') ||
+      canvas.getContext('experimental-webgl');
+    return Boolean(gl);
+  } catch {
+    return false;
+  }
 }
 
 interface ClusterProps {
@@ -82,6 +100,8 @@ export const SnapMap: React.FC<SnapMapProps> = ({
   mapStyle,
   userLocation,
   onSelectVenueGroup,
+  onMapError,
+  onSwitchToList,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -90,6 +110,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
   const clusterIndexRef = useRef<Supercluster<ClusterProps, ClusterProps> | null>(null);
 
   const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
   const [viewTick, setViewTick] = useState(0);
 
   // Apply subtle surface tinting (2D street map, no heatmap clutter)
@@ -124,26 +145,45 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     [mapStyle]
   );
 
-  // Initialize MapLibre GL JS instance in clean 2D mode
+  // Initialize MapLibre GL JS instance in clean 2D mode with WebGL & error recovery (Finding 01)
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+
+    if (!isWebGLSupported()) {
+      const msg =
+        'WebGL is unavailable in this browser. Switched to the Street Pole List view so you can browse all events.';
+      setMapError(msg);
+      onMapError?.(msg);
+      return;
+    }
 
     const initialCity = CITIES[activeCity];
     const startCenter = focusCoordinates || initialCity.coordinates;
     const startZoom = focusCoordinates ? 15.2 : initialCity.defaultZoom;
 
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: STYLE_URLS[mapStyle],
-      center: startCenter,
-      zoom: startZoom,
-      pitch: 0,
-      bearing: 0,
-      maxPitch: 0,
-      dragRotate: false,
-      pitchWithRotate: false,
-      attributionControl: false,
-    });
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container: containerRef.current,
+        style: STYLE_URLS[mapStyle],
+        center: startCenter,
+        zoom: startZoom,
+        pitch: 0,
+        bearing: 0,
+        maxPitch: 0,
+        dragRotate: false,
+        pitchWithRotate: false,
+        attributionControl: { compact: true },
+      });
+    } catch (err) {
+      const msg =
+        err instanceof Error
+          ? `Map initialization failed (${err.message}).`
+          : 'Failed to initialize WebGL map.';
+      setMapError(msg);
+      onMapError?.(msg);
+      return;
+    }
 
     const handleMove = () => setViewTick((t) => t + 1);
     map.on('load', () => {
@@ -162,13 +202,35 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     });
     map.on('moveend', handleMove);
     map.on('zoomend', handleMove);
+    map.on('error', (ev) => {
+      const errMessage = ev?.error?.message || '';
+      if (/webgl|context/i.test(errMessage)) {
+        const msg = 'WebGL rendering context failed. Switching to list view.';
+        setMapError(msg);
+        onMapError?.(msg);
+      }
+    });
+
+    const canvas = map.getCanvas?.();
+    const handleContextLost = (e: Event) => {
+      e.preventDefault();
+      const msg = 'WebGL graphics context was lost.';
+      setMapError(msg);
+      onMapError?.(msg);
+    };
+    canvas?.addEventListener('webglcontextlost', handleContextLost);
 
     mapRef.current = map;
 
     return () => {
+      canvas?.removeEventListener('webglcontextlost', handleContextLost);
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
-      map.remove();
+      try {
+        map.remove();
+      } catch {
+        // Ignore cleanup errors if WebGL context already failed
+      }
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -415,7 +477,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
           >
             ${
               thumbUrl
-                ? `<img src="${thumbUrl}" alt="" loading="lazy" class="w-full h-full object-cover contrast-110" />`
+                ? `<img src="${thumbUrl}" alt="" title="${escapeHtml(leadEvent.attribution.badgeText)}" loading="lazy" class="w-full h-full object-cover contrast-110" />`
                 : `<span class="text-sm leading-none">${vg.topEmoji}</span>`
             }
           </div>
@@ -457,6 +519,34 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     }
   }, [venueGroups, selectedVenueId, viewTick, mapReady, onSelectVenueGroup]);
 
+  if (mapError) {
+    return (
+      <div
+        role="alert"
+        className="relative w-full h-full street-box-bg flex items-center justify-center p-6"
+      >
+        <div className="max-w-md w-full rounded-xl bg-[#16191f] border-[3px] border-[#f4f1ea] shadow-[6px_8px_0px_#07080a] p-6 text-center space-y-4">
+          <span className="inline-block px-2.5 py-0.5 bg-[#ffe600] text-[#0d0e11] font-mono-stamp text-xs font-bold uppercase border border-[#0d0e11]">
+            2D MAP UNAVAILABLE
+          </span>
+          <h2 className="text-base font-extrabold uppercase text-[#f4f1ea]">
+            WebGL Map Could Not Start
+          </h2>
+          <p className="text-xs text-[#d5d2c8] leading-relaxed">{mapError}</p>
+          {onSwitchToList && (
+            <button
+              type="button"
+              onClick={onSwitchToList}
+              className="px-4 py-2 rounded-lg bg-[#ffe600] hover:bg-[#fff04d] text-[#0d0e11] border-2 border-[#0d0e11] font-display-slap text-xs uppercase cursor-pointer shadow-[2px_3px_0px_#07080a]"
+            >
+              Open Street Pole Event List
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative w-full h-full">
       <div
@@ -467,3 +557,5 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     </div>
   );
 };
+
+export default SnapMap;

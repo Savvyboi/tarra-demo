@@ -28,6 +28,7 @@ import {
 import {
   buildGoogleCalendarUrl,
   downloadEventIcs,
+  resolveEventOccurrence,
 } from '../../utils/calendarUtils';
 import { formatDistance } from '../../utils/distanceUtils';
 import { getSafeEventImageUrl } from '../../utils/licenseGuard';
@@ -78,21 +79,25 @@ async function closeTopLayer(element: HTMLDialogElement): Promise<void> {
 interface StoryPlayerModalProps {
   venueGroup: VenueStoryGroup | null;
   initialEventId?: string | null;
+  selectedDate?: string | null;
   savedEventIds: string[];
-  onToggleSaveEvent: (eventId: string) => void;
+  onToggleSaveEvent: (eventId: string, eventObj?: NormalizedEvent) => void;
   onShowOnMap?: (event: NormalizedEvent) => void;
   onClose: () => void;
   onActiveEventChange: (eventId: string) => void;
-  onShareDeepLink: (event: NormalizedEvent) => Promise<boolean>;
+  onShareDeepLink: (
+    event: NormalizedEvent
+  ) => Promise<{ ok: boolean; url: string }>;
   onNextVenue?: () => void;
   onPrevVenue?: () => void;
 }
 
-const STORY_DURATION_MS = 8000;
+const STORY_DURATION_MS = 12000;
 
 export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   venueGroup,
   initialEventId,
+  selectedDate = null,
   savedEventIds,
   onToggleSaveEvent,
   onShowOnMap,
@@ -103,11 +108,19 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   onPrevVenue,
 }) => {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [progress, setProgress] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
+  const [isPaused, setIsPaused] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return Boolean(
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    );
+  });
+  const [isDocumentHidden, setIsDocumentHidden] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
+  const [shareFallbackUrl, setShareFallbackUrl] = useState<string | null>(null);
   const [imgError, setImgError] = useState(false);
 
   const events = venueGroup?.events || [];
@@ -117,7 +130,10 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   useEffect(() => {
     if (!venueGroup) return;
     if (initialEventId) {
-      const idx = venueGroup.events.findIndex((e) => e.id === initialEventId);
+      const idx = venueGroup.events.findIndex(
+        (e) =>
+          e.id === initialEventId || e.aliasIds.includes(initialEventId)
+      );
       setActiveIndex(idx >= 0 ? idx : 0);
     } else {
       setActiveIndex(0);
@@ -125,14 +141,26 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
     setProgress(0);
     setDrawerOpen(false);
     setImgError(false);
+    setShareFallbackUrl(null);
   }, [venueGroup, initialEventId]);
 
   useEffect(() => {
     if (currentEvent) {
       onActiveEventChange(currentEvent.id);
       setImgError(false);
+      setShareFallbackUrl(null);
     }
   }, [currentEvent, onActiveEventChange]);
+
+  // Pause story timer when browser tab is hidden
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      setIsDocumentHidden(document.hidden);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () =>
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, []);
 
   // Open/close native <dialog> using showModal() and register light-dismiss + exit animation fallbacks
   useEffect(() => {
@@ -140,8 +168,12 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
     if (!dialog) return;
 
     if (venueGroup) {
-      dialog.removeAttribute('data-closing');
       if (!dialog.open) {
+        previousFocusRef.current =
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+        dialog.removeAttribute('data-closing');
         dialog.showModal();
       }
     } else if (dialog.open) {
@@ -150,6 +182,9 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
 
     const handleNativeClose = () => {
       onClose();
+      if (previousFocusRef.current && previousFocusRef.current.isConnected) {
+        previousFocusRef.current.focus();
+      }
     };
 
     const handleCancel = (event: Event) => {
@@ -209,7 +244,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   }, [activeIndex, venueGroup, onPrevVenue]);
 
   useEffect(() => {
-    if (!venueGroup || isPaused || drawerOpen) return;
+    if (!venueGroup || isPaused || isDocumentHidden || drawerOpen) return;
 
     const intervalMs = 50;
     const step = (intervalMs / STORY_DURATION_MS) * 100;
@@ -225,7 +260,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
     }, intervalMs);
 
     return () => window.clearInterval(timer);
-  }, [venueGroup, isPaused, drawerOpen, goNext]);
+  }, [venueGroup, isPaused, isDocumentHidden, drawerOpen, goNext]);
 
   useEffect(() => {
     if (!venueGroup) return;
@@ -265,13 +300,24 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
     );
   }
 
+  const resolvedOcc = resolveEventOccurrence(currentEvent, selectedDate);
+  const effectiveStart = resolvedOcc.start;
+  const effectiveEnd = resolvedOcc.end;
+  const effectiveInfoUrl = resolvedOcc.infoUrl ?? currentEvent.infoUrl;
+
   const cityMeta = CITIES[currentEvent.cityId];
   const topicMeta =
     TOPICS.find((t) => t.id === currentEvent.category) || TOPICS[0];
-  const isSaved = savedEventIds.includes(currentEvent.id);
+  const isSaved =
+    savedEventIds.includes(currentEvent.id) ||
+    currentEvent.aliasIds.some((id) => savedEventIds.includes(id));
 
   const safeImageUrl = !imgError
-    ? getSafeEventImageUrl(currentEvent.raw, currentEvent.id)
+    ? getSafeEventImageUrl(
+        currentEvent.raw,
+        currentEvent.id,
+        currentEvent.aliasIds
+      )
     : null;
 
   const formatTimeWindow = (start: Date, end: Date) => {
@@ -288,10 +334,13 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   };
 
   const handleShareClick = async () => {
-    const ok = await onShareDeepLink(currentEvent);
-    if (ok) {
+    const res = await onShareDeepLink(currentEvent);
+    if (res.ok) {
+      setShareFallbackUrl(null);
       setCopiedToast(true);
       setTimeout(() => setCopiedToast(false), 2600);
+    } else {
+      setShareFallbackUrl(res.url);
     }
   };
 
@@ -388,8 +437,12 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                 <p className="font-mono-stamp text-[10px] text-[#d5d2c8] truncate flex items-center gap-1">
                   <MapPin className="w-3 h-3 text-[#ffe600] shrink-0" />
                   <span>
-                    {formatDistance(currentEvent.distanceKm)} • {cityMeta.name} •{' '}
-                    {currentEvent.streetAddress}
+                    {currentEvent.distanceKm !== null
+                      ? `${formatDistance(currentEvent.distanceKm)} • `
+                      : currentEvent.isOnline
+                        ? 'Online Event • '
+                        : 'Location not provided • '}
+                    {cityMeta.name} • {currentEvent.streetAddress}
                   </span>
                 </p>
               </div>
@@ -398,7 +451,9 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
             <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
-                onClick={() => onToggleSaveEvent(currentEvent.id)}
+                onClick={() =>
+                  onToggleSaveEvent(currentEvent.id, currentEvent)
+                }
                 aria-label={
                   isSaved ? 'Remove from saved stash' : 'Save sticker to stash'
                 }
@@ -419,6 +474,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                 aria-label={
                   isPaused ? 'Resume flyer timer' : 'Pause flyer timer'
                 }
+                title={isPaused ? 'Auto-advance paused' : 'Pause auto-advance'}
                 className="p-1.5 rounded-md bg-[#22262e] hover:bg-[#2e333d] text-[#f4f1ea] border border-white/25 cursor-pointer"
               >
                 {isPaused ? (
@@ -505,13 +561,21 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               <span>{currentEvent.categoryEmoji}</span>
               <span>{currentEvent.categoryLabel}</span>
             </span>
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-sm bg-[#22c55e] text-[#0d0e11] border border-[#0d0e11] shadow-[2px_2px_0px_#07080a] font-mono-stamp text-xs font-bold uppercase">
+            <span
+              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-sm border shadow-[2px_2px_0px_#07080a] font-mono-stamp text-xs font-bold uppercase ${
+                currentEvent.priceStatus === 'free'
+                  ? 'bg-[#22c55e] text-[#0d0e11] border-[#0d0e11]'
+                  : currentEvent.priceStatus === 'paid'
+                    ? 'bg-[#ffe600] text-[#0d0e11] border-[#0d0e11]'
+                    : 'bg-[#22262e] text-[#d5d2c8] border-white/25'
+              }`}
+            >
               <Ticket className="w-3.5 h-3.5" />
               <span>{currentEvent.priceText}</span>
             </span>
             <button
               type="button"
-              onClick={() => downloadEventIcs(currentEvent)}
+              onClick={() => downloadEventIcs(currentEvent, selectedDate)}
               title="Add event to Apple / Outlook / Mobile Calendar (.ics)"
               className="ml-auto inline-flex items-center gap-1 px-2.5 py-0.5 rounded-sm bg-[#121418] hover:bg-[#22262e] border border-[#f4f1ea] font-mono-stamp text-[11px] font-bold text-[#ffe600] cursor-pointer shadow-[2px_2px_0px_#07080a]"
             >
@@ -530,9 +594,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
             </h2>
             <p className="mt-1 font-mono-stamp text-xs text-[#ffe600] font-bold flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 shrink-0" />
-              <span>
-                {formatTimeWindow(currentEvent.startTime, currentEvent.endTime)}
-              </span>
+              <span>{formatTimeWindow(effectiveStart, effectiveEnd)}</span>
             </p>
             <p className="mt-1.5 text-xs text-[#d5d2c8] line-clamp-2 leading-relaxed">
               {currentEvent.shortDescription}
@@ -556,43 +618,47 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               <span>Details</span>
             </button>
 
-            {onShowOnMap && (
-              <button
-                type="button"
-                onClick={() => {
-                  onShowOnMap(currentEvent);
-                  if (dialogRef.current) {
-                    void closeTopLayer(dialogRef.current);
+            {onShowOnMap &&
+              currentEvent.hasExactCoordinates &&
+              currentEvent.coordinates && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onShowOnMap(currentEvent);
+                    if (dialogRef.current) {
+                      void closeTopLayer(dialogRef.current);
+                    }
+                  }}
+                  style={
+                    {
+                      '--slap-rot': '1.8deg',
+                      '--slap-radius': '5px 12px 4px 10px',
+                    } as React.CSSProperties
                   }
-                }}
+                  className="organic-slap-btn flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#ff2a85] hover:bg-[#ff4796] text-white border-2 border-[#f4f1ea] font-grotesk font-extrabold text-xs uppercase tracking-tight cursor-pointer"
+                >
+                  <MapIcon aria-hidden="true" className="w-3.5 h-3.5" />
+                  <span>On Map</span>
+                </button>
+              )}
+
+            {currentEvent.reittiopasUrl && (
+              <a
+                href={currentEvent.reittiopasUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 style={
                   {
-                    '--slap-rot': '1.8deg',
-                    '--slap-radius': '5px 12px 4px 10px',
+                    '--slap-rot': '-1.2deg',
+                    '--slap-radius': '11px 5px 9px 4px',
                   } as React.CSSProperties
                 }
-                className="organic-slap-btn flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#ff2a85] hover:bg-[#ff4796] text-white border-2 border-[#f4f1ea] font-grotesk font-extrabold text-xs uppercase tracking-tight cursor-pointer"
+                className="organic-slap-btn flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#ffe600] hover:bg-[#fff04d] text-[#0d0e11] border-2 border-[#0d0e11] font-grotesk font-extrabold text-xs uppercase tracking-tight"
               >
-                <MapIcon aria-hidden="true" className="w-3.5 h-3.5" />
-                <span>On Map</span>
-              </button>
+                <Navigation aria-hidden="true" className="w-3.5 h-3.5" />
+                <span>Route</span>
+              </a>
             )}
-
-            <a
-              href={currentEvent.reittiopasUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={
-                {
-                  '--slap-rot': '-1.2deg',
-                  '--slap-radius': '11px 5px 9px 4px',
-                } as React.CSSProperties
-              }
-              className="organic-slap-btn flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#ffe600] hover:bg-[#fff04d] text-[#0d0e11] border-2 border-[#0d0e11] font-grotesk font-extrabold text-xs uppercase tracking-tight"
-            >
-              <Navigation aria-hidden="true" className="w-3.5 h-3.5" />
-              <span>Route</span>
-            </a>
 
             <button
               type="button"
@@ -616,8 +682,28 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
 
           {copiedToast && (
             <div className="px-3 py-1.5 rounded-md bg-[#22c55e] text-[#0d0e11] border-2 border-[#0d0e11] font-mono-stamp text-[11px] font-bold text-center animate-fade-in">
-              ✓ LINK COPIED (?city={currentEvent.cityId}&event=
-              {currentEvent.id})
+              ✓ Event link copied to clipboard
+            </div>
+          )}
+
+          {shareFallbackUrl && (
+            <div className="p-2 rounded-md bg-[#1a1d24] border border-[#ffe600] flex items-center gap-1.5 animate-fade-in">
+              <input
+                type="text"
+                readOnly
+                value={shareFallbackUrl}
+                onFocus={(e) => e.currentTarget.select()}
+                aria-label="Shareable event URL"
+                className="flex-1 bg-transparent font-mono-stamp text-[10px] text-[#f4f1ea] focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShareFallbackUrl(null)}
+                aria-label="Dismiss share URL"
+                className="text-[#c7c4b8] hover:text-white cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
 
@@ -663,12 +749,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               <div className="p-3 rounded-lg bg-[#1a1d24] border-2 border-[#f4f1ea]/30 space-y-1.5 text-xs">
                 <div className="flex items-center gap-2 text-[#ffe600] font-mono-stamp font-bold">
                   <Calendar className="w-3.5 h-3.5 shrink-0" />
-                  <span>
-                    {formatTimeWindow(
-                      currentEvent.startTime,
-                      currentEvent.endTime
-                    )}
-                  </span>
+                  <span>{formatTimeWindow(effectiveStart, effectiveEnd)}</span>
                 </div>
                 <div className="flex items-center gap-2 text-[#f4f1ea]">
                   <MapPin className="w-3.5 h-3.5 text-[#ff2a85] shrink-0" />
@@ -686,14 +767,14 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => downloadEventIcs(currentEvent)}
+                  onClick={() => downloadEventIcs(currentEvent, selectedDate)}
                   className="flex-1 py-2 px-3 rounded-md bg-[#22262e] hover:bg-[#2e333d] border border-[#f4f1ea]/30 font-mono-stamp text-xs font-bold text-[#f4f1ea] inline-flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <CalendarPlus className="w-3.5 h-3.5 text-[#ffe600]" />
                   <span>Download .ICS</span>
                 </button>
                 <a
-                  href={buildGoogleCalendarUrl(currentEvent)}
+                  href={buildGoogleCalendarUrl(currentEvent, selectedDate)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-1 py-2 px-3 rounded-md bg-[#22262e] hover:bg-[#2e333d] border border-[#f4f1ea]/30 font-mono-stamp text-xs font-bold text-[#f4f1ea] inline-flex items-center justify-center gap-1.5"
@@ -710,21 +791,23 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
             </div>
 
             <div className="pt-3 border-t-2 border-dashed border-[#f4f1ea]/20 flex items-center gap-2">
-              <a
-                href={currentEvent.reittiopasUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-[#ffe600] hover:bg-[#fff04d] text-[#0d0e11] border-2 border-[#0d0e11] shadow-[2px_2px_0px_#07080a] font-grotesk font-extrabold text-xs uppercase"
-              >
-                <Navigation className="w-4 h-4" />
-                <span>Transit Route (Digitransit)</span>
-              </a>
-              {currentEvent.infoUrl && (
+              {currentEvent.reittiopasUrl && (
                 <a
-                  href={currentEvent.infoUrl}
+                  href={currentEvent.reittiopasUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-lg bg-[#22262e] hover:bg-[#2e333d] border border-[#f4f1ea] text-[#f4f1ea] font-grotesk font-bold text-xs uppercase"
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-[#ffe600] hover:bg-[#fff04d] text-[#0d0e11] border-2 border-[#0d0e11] shadow-[2px_2px_0px_#07080a] font-grotesk font-extrabold text-xs uppercase"
+                >
+                  <Navigation className="w-4 h-4" />
+                  <span>Transit Route (Digitransit)</span>
+                </a>
+              )}
+              {effectiveInfoUrl && (
+                <a
+                  href={effectiveInfoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-lg bg-[#22262e] hover:bg-[#2e333d] border border-[#f4f1ea] text-[#f4f1ea] font-grotesk font-bold text-xs uppercase"
                 >
                   <span>Official Page</span>
                   <ExternalLink className="w-3.5 h-3.5" />

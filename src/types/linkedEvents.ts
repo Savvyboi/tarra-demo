@@ -73,16 +73,20 @@ export interface LinkedEventKeyword {
   '@type'?: string;
 }
 
+export type PriceStatus = 'free' | 'paid' | 'unknown';
+
 export interface LinkedEventOffer {
-  is_free: boolean;
+  is_free?: boolean | null;
   price?: LocalizedString | null;
   description?: LocalizedString | null;
   info_url?: LocalizedString | null;
 }
 
 export interface RawEventOccurrence {
+  id?: string;
   start: string;
   end?: string | null;
+  info_url?: LocalizedString | string | null;
 }
 
 export interface RawLinkedEvent {
@@ -93,30 +97,33 @@ export interface RawLinkedEvent {
   start_time: string | null;
   end_time?: string | null;
   occurrence_dates?: RawEventOccurrence[];
+  super_event?: { id?: string; '@id'?: string } | null;
   location?: LinkedEventPlace | null;
   location_extra_info?: LocalizedString | null;
   keywords?: LinkedEventKeyword[];
   images?: LinkedEventImage[];
-  offers?: LinkedEventOffer[];
+  offers?: LinkedEventOffer[] | null;
   info_url?: LocalizedString | null;
   provider?: LocalizedString | string | null;
   data_source?: string | null;
   publisher?: string | null;
   event_status?: string;
-  _demo_offset_hours?: number;
-  _demo_duration_hours?: number;
-  _demo_day_offset?: number;
   '@id'?: string;
   '@context'?: string;
   '@type'?: string;
 }
 
+export interface LinkedEventsApiMeta {
+  count: number;
+  total_upstream?: number;
+  next: string | null;
+  previous: string | null;
+  generated_at?: string;
+  source_calendar?: string;
+}
+
 export interface LinkedEventsApiResponse {
-  meta: {
-    count: number;
-    next: string | null;
-    previous: string | null;
-  };
+  meta: LinkedEventsApiMeta;
   data: RawLinkedEvent[];
 }
 
@@ -124,6 +131,7 @@ export interface LicenseAttribution {
   badgeText: string;
   licenseType: 'event_only' | 'cc_by';
   photographer: string;
+  hasPhotographerCredit: boolean;
   source: string;
   canReuseOutOfContext: boolean;
   apiAttributionText: string;
@@ -134,10 +142,13 @@ export interface NormalizedOccurrence {
   start: Date;
   end: Date;
   dateKey: string;
+  infoUrl?: string | null;
+  sourceEventId?: string;
 }
 
 export interface NormalizedEvent {
   id: string;
+  aliasIds: string[];
   cityId: CityId;
   title: string;
   shortDescription: string;
@@ -151,21 +162,25 @@ export interface NormalizedEvent {
   isTonight: boolean;
   isThisWeekend: boolean;
   category: Exclude<TopicCategory, 'all'>;
+  categories: Array<Exclude<TopicCategory, 'all'>>;
   categoryEmoji: string;
   categoryLabel: string;
   venueId: string;
   venueName: string;
   streetAddress: string;
-  coordinates: [number, number]; // [lon, lat]
-  /** Distance in kilometers from user GPS (or active city center fallback) */
-  distanceKm: number;
+  coordinates: [number, number] | null; // [lon, lat] or null if unknown/online
+  hasExactCoordinates: boolean;
+  isOnline: boolean;
+  /** Distance in kilometers from user GPS (or active city center fallback), or null if unmapped */
+  distanceKm: number | null;
   imageUrl: string | null;
   imageAlt: string;
   attribution: LicenseAttribution;
+  priceStatus: PriceStatus;
   isFree: boolean;
   priceText: string;
   infoUrl: string | null;
-  reittiopasUrl: string;
+  reittiopasUrl: string | null;
   heatWeight: number;
   raw: RawLinkedEvent;
 }

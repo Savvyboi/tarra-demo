@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "sync-feeds": "node scripts/sync-feeds.mjs"
+    "sync-feeds": "node scripts/sync-feeds.mjs",
+    "test": "node --test tests/regression.test.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.4",

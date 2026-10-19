@@ -1,4 +1,4 @@
-import { CityId, TopicCategory } from '../types/linkedEvents';
+import type { CityId, TopicCategory } from '../types/linkedEvents';
 
 export interface CityConfig {
   id: CityId;

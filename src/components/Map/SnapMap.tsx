@@ -15,8 +15,6 @@ interface SnapMapProps {
   selectedVenueId: string | null;
   focusCoordinates?: [number, number] | null;
   mapStyle: MapStyleId;
-  show3DBuildings: boolean;
-  showHeatmap: boolean;
   userLocation: [number, number] | null;
   onSelectVenueGroup: (group: VenueStoryGroup) => void;
 }
@@ -45,7 +43,19 @@ const CATEGORY_SLAP_COLORS: Record<string, { bg: string; text: string }> = {
   nature: { bg: '#a3e635', text: '#0d0e11' },
 };
 
-const STICKER_ANGLES = [-2.4, 1.8, -1.3, 2.2, -1.9, 1.4, -0.8, 2.5];
+const CHAOTIC_ANGLES = [
+  -16, 13, -9, 17, -14, 8, -6, 15, -12, 11, -18, 7, -5, 14, -11, 16,
+];
+
+const ORGANIC_RADII = [
+  '54% 46% 48% 52% / 46% 54% 46% 54%',
+  '4px 11px 5px 10px',
+  '11px 4px 10px 4px',
+  '50%',
+  '6px 3px 9px 4px',
+  '45% 55% 52% 48% / 53% 44% 56% 47%',
+  '3px 9px 3px 9px',
+];
 
 function escapeHtml(value: string): string {
   return value
@@ -56,12 +66,12 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function getStickerAngle(id: string): number {
+function hashVenue(id: string): number {
   let hash = 0;
   for (let i = 0; i < id.length; i++) {
     hash = (hash * 31 + id.charCodeAt(i)) | 0;
   }
-  return STICKER_ANGLES[Math.abs(hash) % STICKER_ANGLES.length];
+  return Math.abs(hash);
 }
 
 export const SnapMap: React.FC<SnapMapProps> = ({
@@ -70,8 +80,6 @@ export const SnapMap: React.FC<SnapMapProps> = ({
   selectedVenueId,
   focusCoordinates,
   mapStyle,
-  show3DBuildings,
-  showHeatmap,
   userLocation,
   onSelectVenueGroup,
 }) => {
@@ -84,34 +92,11 @@ export const SnapMap: React.FC<SnapMapProps> = ({
   const [mapReady, setMapReady] = useState(false);
   const [viewTick, setViewTick] = useState(0);
 
-  // Build GeoJSON for the GPU Thermal Heatmap Layer
-  const buildHeatmapGeoJson = useCallback((): GeoJSON.FeatureCollection<GeoJSON.Point> => {
-    return {
-      type: 'FeatureCollection',
-      features: venueGroups.map((group) => ({
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: group.coordinates,
-        },
-        properties: {
-          venueId: group.venueId,
-          weight: group.hasLiveEvent
-            ? Math.min(2.5, group.totalHeat * 1.45)
-            : group.totalHeat,
-          eventCount: group.events.length,
-          isLive: group.hasLiveEvent ? 1 : 0,
-        },
-      })),
-    };
-  }, [venueGroups]);
-
-  // Apply custom tarra street-metal style layers (Heatmap + 3D Buildings + Steel/Asphalt tinting)
+  // Apply subtle surface tinting (2D street map, no heatmap clutter)
   const syncCustomLayers = useCallback(
     (map: maplibregl.Map) => {
       if (!map.isStyleLoaded()) return;
 
-      // 1. Apply Industrial Steel / Dark Asphalt tinting to base layers
       const style = map.getStyle();
       if (style?.layers) {
         for (const layer of style.layers) {
@@ -135,173 +120,30 @@ export const SnapMap: React.FC<SnapMapProps> = ({
           }
         }
       }
-
-      // 2. Add or update GPU Heatmap source & layer
-      const heatGeoJson = buildHeatmapGeoJson();
-      const existingSource = map.getSource('snapevents-heat') as
-        | maplibregl.GeoJSONSource
-        | undefined;
-
-      if (existingSource) {
-        existingSource.setData(heatGeoJson);
-      } else {
-        map.addSource('snapevents-heat', {
-          type: 'geojson',
-          data: heatGeoJson,
-        });
-      }
-
-      if (!map.getLayer('snapevents-thermal-heatmap')) {
-        map.addLayer({
-          id: 'snapevents-thermal-heatmap',
-          type: 'heatmap',
-          source: 'snapevents-heat',
-          maxzoom: 17,
-          layout: {
-            visibility: showHeatmap ? 'visible' : 'none',
-          },
-          paint: {
-            'heatmap-weight': [
-              'interpolate',
-              ['linear'],
-              ['get', 'weight'],
-              0,
-              0,
-              0.5,
-              0.6,
-              2.5,
-              1.4,
-            ],
-            'heatmap-intensity': [
-              'interpolate',
-              ['linear'],
-              ['zoom'],
-              9,
-              1.0,
-              13,
-              1.6,
-              16,
-              2.3,
-            ],
-            'heatmap-color': [
-              'interpolate',
-              ['linear'],
-              ['heatmap-density'],
-              0,
-              'rgba(0, 0, 0, 0)',
-              0.2,
-              'rgba(255, 85, 0, 0.22)',
-              0.45,
-              'rgba(255, 42, 133, 0.42)',
-              0.72,
-              'rgba(255, 145, 0, 0.68)',
-              0.9,
-              'rgba(255, 230, 0, 0.85)',
-              1,
-              'rgba(255, 255, 255, 0.95)',
-            ],
-            'heatmap-radius': [
-              'interpolate',
-              ['linear'],
-              ['zoom'],
-              9,
-              28,
-              13,
-              54,
-              16,
-              82,
-            ],
-            'heatmap-opacity': showHeatmap ? 0.72 : 0,
-          },
-        });
-      } else {
-        map.setLayoutProperty(
-          'snapevents-thermal-heatmap',
-          'visibility',
-          showHeatmap ? 'visible' : 'none'
-        );
-      }
-
-      // 3. Add 3D extruded buildings at zoom >= 14.5 if vector source exists
-      const sources = map.getStyle()?.sources || {};
-      const vectorSourceId = Object.keys(sources).find(
-        (k) => sources[k].type === 'vector'
-      );
-
-      if (vectorSourceId && !map.getLayer('snapevents-3d-buildings')) {
-        try {
-          map.addLayer({
-            id: 'snapevents-3d-buildings',
-            source: vectorSourceId,
-            'source-layer': 'building',
-            type: 'fill-extrusion',
-            minzoom: 14.5,
-            layout: {
-              visibility: show3DBuildings ? 'visible' : 'none',
-            },
-            paint: {
-              'fill-extrusion-color':
-                mapStyle === 'daylight'
-                  ? '#cbd5e1'
-                  : mapStyle === 'neon'
-                    ? '#232832'
-                    : '#1a1e24',
-              'fill-extrusion-height': [
-                'coalesce',
-                ['get', 'render_height'],
-                ['get', 'height'],
-                14,
-              ],
-              'fill-extrusion-base': [
-                'coalesce',
-                ['get', 'render_min_height'],
-                ['get', 'min_height'],
-                0,
-              ],
-              'fill-extrusion-opacity': 0.76,
-            },
-          });
-        } catch {
-          // Vector tile source may not have 'building' layer
-        }
-      } else if (map.getLayer('snapevents-3d-buildings')) {
-        map.setLayoutProperty(
-          'snapevents-3d-buildings',
-          'visibility',
-          show3DBuildings ? 'visible' : 'none'
-        );
-      }
     },
-    [buildHeatmapGeoJson, mapStyle, show3DBuildings, showHeatmap]
+    [mapStyle]
   );
 
-  // Initialize MapLibre GL JS instance
+  // Initialize MapLibre GL JS instance in clean 2D mode
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
     const initialCity = CITIES[activeCity];
     const startCenter = focusCoordinates || initialCity.coordinates;
-    const startZoom = focusCoordinates ? 15.6 : initialCity.defaultZoom;
-    const startPitch = focusCoordinates ? 55 : initialCity.pitch;
+    const startZoom = focusCoordinates ? 15.2 : initialCity.defaultZoom;
 
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: STYLE_URLS[mapStyle],
       center: startCenter,
       zoom: startZoom,
-      pitch: startPitch,
-      bearing: initialCity.bearing,
-      maxPitch: 70,
+      pitch: 0,
+      bearing: 0,
+      maxPitch: 0,
+      dragRotate: false,
+      pitchWithRotate: false,
       attributionControl: false,
     });
-
-    map.addControl(
-      new maplibregl.NavigationControl({
-        visualizePitch: true,
-        showCompass: true,
-      }),
-      'top-right'
-    );
 
     const handleMove = () => setViewTick((t) => t + 1);
     map.on('load', () => {
@@ -344,25 +186,26 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     map.flyTo({
       center: target.coordinates,
       zoom: target.defaultZoom,
-      pitch: target.pitch,
-      bearing: target.bearing,
-      duration: 1400,
+      pitch: 0,
+      bearing: 0,
+      duration: 1200,
       essential: true,
     });
   }, [activeCity]);
 
-  // Fly directly to a specific venue when "Show on Map" is clicked in Pole Feed View
+  // Fly directly to a specific venue in 2D when "Show on Map" is triggered
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !focusCoordinates) return;
+    if (!map || !mapReady || !focusCoordinates) return;
     map.flyTo({
       center: focusCoordinates,
-      zoom: 15.8,
-      pitch: 56,
-      duration: 1100,
+      zoom: 15.4,
+      pitch: 0,
+      bearing: 0,
+      duration: 950,
       essential: true,
     });
-  }, [focusCoordinates]);
+  }, [focusCoordinates, mapReady]);
 
   // Switch MapLibre base style when mapStyle changes
   const prevStyleRef = useRef<MapStyleId>(mapStyle);
@@ -377,14 +220,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     }
   }, [mapStyle, mapReady, syncCustomLayers]);
 
-  // Update heatmap & 3D buildings when toggles or venueGroups change
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-    syncCustomLayers(map);
-  }, [venueGroups, showHeatmap, show3DBuildings, mapReady, syncCustomLayers]);
-
-  // Render "Near Me" user location sticker marker & fly to user when requested
+  // Render "Near Me" user location sticker marker & fly to user in 2D
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -399,10 +235,8 @@ export const SnapMap: React.FC<SnapMapProps> = ({
       el.className = 'tarra-user-marker';
       el.innerHTML = `
         <div class="relative flex items-center justify-center">
-          <span class="absolute -inset-2 rounded-full bg-[#ffe600]/45 animate-ping"></span>
-          <div class="relative px-2 py-0.5 bg-[#ffe600] text-[#0d0e11] border-2 border-[#0d0e11] outline-2 outline-[#f4f1ea] shadow-[2px_3px_0px_#07080a] font-mono-stamp text-[10px] font-bold uppercase tracking-tighter">
-            📍 YOU
-          </div>
+          <span class="absolute -inset-1.5 rounded-full bg-[#ffe600]/45 animate-ping"></span>
+          <div class="relative w-4 h-4 rounded-full bg-[#ffe600] border-2 border-[#0d0e11] outline-2 outline-[#f4f1ea] shadow"></div>
         </div>
       `;
       userMarkerRef.current = new maplibregl.Marker({ element: el })
@@ -411,19 +245,20 @@ export const SnapMap: React.FC<SnapMapProps> = ({
 
       map.flyTo({
         center: userLocation,
-        zoom: 14.2,
-        pitch: 52,
-        duration: 1300,
+        zoom: 14.0,
+        pitch: 0,
+        bearing: 0,
+        duration: 1100,
         essential: true,
       });
     }
   }, [userLocation]);
 
-  // Rebuild Supercluster index when venueGroups change
+  // Rebuild Supercluster index when venueGroups change (tighter radius so stickers breathe)
   useEffect(() => {
     const supercluster = new Supercluster<ClusterProps, ClusterProps>({
-      radius: 48,
-      maxZoom: 15,
+      radius: 34,
+      maxZoom: 14,
       map: (props) => ({
         hasLive: props.venueGroup?.hasLiveEvent ? 1 : 0,
       }),
@@ -451,7 +286,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     setViewTick((t) => t + 1);
   }, [venueGroups]);
 
-  // Render Supercluster + Die-Cut Street Sticker DOM Markers
+  // Render compact, organic, chaotic Street Sticker DOM Markers
   useEffect(() => {
     const map = mapRef.current;
     const supercluster = clusterIndexRef.current;
@@ -482,31 +317,34 @@ export const SnapMap: React.FC<SnapMapProps> = ({
       const [lon, lat] = feature.geometry.coordinates;
       const props = feature.properties;
 
-      // 1. CLUSTER MARKER: Stacked Pile of Street Stickers
+      // 1. COMPACT CLUSTER MARKER: Small chaotic pile of mini-slaps
       if (props.cluster && typeof props.cluster_id === 'number') {
         const count = props.point_count || 0;
         const hasLiveCount = props.hasLive || 0;
+        const clusterAngle = ((props.cluster_id * 19) % 21) - 10;
         const clusterEl = document.createElement('button');
         clusterEl.type = 'button';
         clusterEl.setAttribute(
           'aria-label',
-          `Sticker cluster with ${count} venues. Click to zoom in.`
+          `Cluster of ${count} spots. Click to zoom in.`
         );
         clusterEl.className =
           'group relative flex items-center justify-center cursor-pointer focus:outline-none select-none';
 
         clusterEl.innerHTML = `
-          <div class="relative flex items-center justify-center w-14 h-14 transition-transform duration-150 group-hover:scale-110">
-            <!-- Back sticker in stack -->
-            <div class="absolute w-12 h-12 -translate-x-1 -translate-y-1 rounded-md bg-[#ffe600] border-2 border-[#0d0e11] shadow-[2px_3px_0px_#07080a] rotate-12"></div>
-            <!-- Middle sticker in stack -->
-            <div class="absolute w-12 h-12 translate-x-1 translate-y-1 rounded-md bg-[#ff2a85] border-2 border-[#f4f1ea] shadow-[2px_3px_0px_#07080a] -rotate-12"></div>
-            <!-- Front count slap -->
-            <div class="relative flex flex-col items-center justify-center w-12 h-12 rounded-md bg-[#121418] border-[2.5px] border-[#f4f1ea] text-[#f4f1ea] shadow-[3px_4px_0px_#07080a]">
-              <span class="font-display-slap text-sm leading-none text-[#ffe600]">${count}</span>
-              <span class="font-mono-stamp text-[9px] font-bold uppercase tracking-tighter text-[#f4f1ea] mt-0.5">${
-                hasLiveCount > 0 ? '🔥 LIVE' : 'SLAPS'
-              }</span>
+          <div class="relative flex items-center justify-center w-9 h-9 transition-transform duration-150 group-hover:scale-115">
+            <div class="absolute w-7 h-7 -translate-x-1 -translate-y-0.5 rounded-[5px_9px_4px_8px] bg-[#ffe600] border-[1.5px] border-[#0d0e11] rotate-14"></div>
+            <div class="absolute w-7 h-7 translate-x-1 translate-y-0.5 rounded-[9px_4px_8px_5px] bg-[#ff2a85] border-[1.5px] border-[#f4f1ea] -rotate-12"></div>
+            <div
+              class="relative flex items-center justify-center w-7.5 h-7.5 rounded-[44%_56%_48%_52%/52%_44%_56%_48%] bg-[#121418] border-2 border-[#f4f1ea] text-[#ffe600] shadow"
+              style="transform: rotate(${clusterAngle}deg);"
+            >
+              <span class="font-display-slap text-[11px] leading-none">${count}</span>
+              ${
+                hasLiveCount > 0
+                  ? `<span class="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#ff2a85] border border-[#f4f1ea]"></span>`
+                  : ''
+              }
             </div>
           </div>
         `;
@@ -515,12 +353,14 @@ export const SnapMap: React.FC<SnapMapProps> = ({
           e.stopPropagation();
           const expansionZoom = Math.min(
             supercluster.getClusterExpansionZoom(props.cluster_id!),
-            16.5
+            16
           );
           map.flyTo({
             center: [lon, lat],
             zoom: expansionZoom,
-            duration: 700,
+            pitch: 0,
+            bearing: 0,
+            duration: 600,
             essential: true,
           });
         });
@@ -535,7 +375,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
         continue;
       }
 
-      // 2. SINGLE VENUE MARKER: Die-Cut Vinyl Sticker Slap
+      // 2. SINGLE VENUE MARKER: Small, organic, chaotic die-cut slap (no permanent road-blocking label!)
       const vg = props.venueGroup;
       if (!vg) continue;
 
@@ -544,9 +384,10 @@ export const SnapMap: React.FC<SnapMapProps> = ({
         CATEGORY_SLAP_COLORS[vg.topCategory] || { bg: '#ffe600', text: '#0d0e11' };
       const eventCount = vg.events.length;
       const leadEvent = vg.events[0];
-      const angle = getStickerAngle(vg.venueId);
+      const h = hashVenue(vg.venueId);
+      const angle = CHAOTIC_ANGLES[h % CHAOTIC_ANGLES.length];
+      const radiusShape = ORGANIC_RADII[h % ORGANIC_RADII.length];
 
-      // Safe event_only image usage inside this specific event's map marker sticker
       const thumbUrl = vg.coverImageUrl ? escapeHtml(vg.coverImageUrl) : null;
       const safeVenueName = escapeHtml(vg.venueName);
       const safeLeadTitle = escapeHtml(leadEvent.title);
@@ -555,58 +396,49 @@ export const SnapMap: React.FC<SnapMapProps> = ({
       bubbleEl.type = 'button';
       bubbleEl.setAttribute(
         'aria-label',
-        `Open event sticker for ${vg.venueName} (${eventCount} ${
-          eventCount === 1 ? 'event' : 'events'
-        })`
+        `${vg.venueName}: ${leadEvent.title}`
       );
       bubbleEl.className =
         'group relative flex flex-col items-center cursor-pointer focus:outline-none select-none';
 
+      // Pass state to CSS via Custom Properties (--slap-rot, --slap-radius)
       bubbleEl.innerHTML = `
         <div
-          class="relative flex flex-col items-center transition-transform duration-150 ${
-            isSelected ? 'scale-125 z-30' : 'group-hover:scale-110 group-hover:z-20'
+          class="map-mini-slap relative w-8 h-8 p-[2px] bg-[#f4f1ea] ${
+            isSelected ? 'is-selected z-30 ring-2 ring-[#ffe600]' : 'hover:z-20'
           }"
-          style="transform: rotate(${isSelected ? 0 : angle}deg);"
+          style="--slap-rot: ${angle}deg; --slap-radius: ${radiusShape}; border: 1.5px solid #0d0e11;"
         >
-          <!-- Die-Cut Square/Rounded Vinyl Sticker -->
           <div
-            class="relative w-13 h-13 rounded-lg bg-[#f4f1ea] p-[3px] shadow-[3px_4px_0px_#07080a]"
-            style="border: 2px solid #0d0e11;"
+            class="relative w-full h-full overflow-hidden flex items-center justify-center"
+            style="border-radius: inherit; background-color: ${slapColor.bg}; color: ${slapColor.text};"
           >
-            <div class="relative w-full h-full rounded-[4px] bg-[#16191f] overflow-hidden flex items-center justify-center border border-[#0d0e11]">
-              ${
-                thumbUrl
-                  ? `<img src="${thumbUrl}" alt="" loading="lazy" class="w-full h-full object-cover contrast-110 group-hover:scale-105 transition-transform" />`
-                  : `<div class="w-full h-full flex items-center justify-center text-2xl" style="background-color: ${slapColor.bg}; color: ${slapColor.text};">${vg.topEmoji}</div>`
-              }
-              <!-- Corner Category Stamp -->
-              <span
-                class="absolute bottom-0 right-0 px-1 py-[1px] text-[11px] leading-none border-t border-l border-[#0d0e11]"
-                style="background-color: ${slapColor.bg}; color: ${slapColor.text};"
-              >${vg.topEmoji}</span>
-            </div>
-
             ${
-              vg.hasLiveEvent
-                ? `<span class="absolute -top-2 -left-2 px-1.5 py-[1px] bg-[#ff2a85] text-white border-[1.5px] border-[#f4f1ea] shadow-[2px_2px_0px_#07080a] font-mono-stamp text-[8px] font-bold uppercase tracking-tighter">● LIVE</span>`
-                : vg.hasStartingSoon
-                  ? `<span class="absolute -top-2 -left-2 px-1.5 py-[1px] bg-[#ffe600] text-[#0d0e11] border-[1.5px] border-[#0d0e11] shadow-[2px_2px_0px_#07080a] font-mono-stamp text-[8px] font-bold uppercase tracking-tighter">SOON</span>`
-                  : ''
-            }
-
-            ${
-              eventCount > 1
-                ? `<span class="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-sm bg-[#ffe600] border-[1.5px] border-[#0d0e11] text-[#0d0e11] font-mono-stamp text-[10px] font-bold flex items-center justify-center shadow-[2px_2px_0px_#07080a]">+${eventCount}</span>`
-                : ''
+              thumbUrl
+                ? `<img src="${thumbUrl}" alt="" loading="lazy" class="w-full h-full object-cover contrast-110" />`
+                : `<span class="text-sm leading-none">${vg.topEmoji}</span>`
             }
           </div>
 
-          <!-- Rectangular Street-Sign / Slap Label underneath -->
-          <div class="mt-1 max-w-[142px] px-2 py-0.5 bg-[#111317] border-[1.5px] border-[#f4f1ea] shadow-[2px_3px_0px_#07080a] text-left pointer-events-none">
-            <p class="font-grotesk text-[10px] font-bold uppercase tracking-tight text-[#ffe600] truncate leading-tight">${safeVenueName}</p>
-            <p class="text-[9px] font-medium text-[#f4f1ea] truncate leading-tight">${safeLeadTitle}</p>
-          </div>
+          ${
+            vg.hasLiveEvent
+              ? `<span class="absolute -top-1 -left-1 w-2.5 h-2.5 rounded-full bg-[#ff2a85] border border-[#f4f1ea]"></span>`
+              : ''
+          }
+
+          ${
+            eventCount > 1
+              ? `<span class="absolute -bottom-1 -right-1 px-1 py-0 rounded-xs bg-[#ffe600] border border-[#0d0e11] text-[#0d0e11] font-mono-stamp text-[8px] font-bold leading-tight">${eventCount}</span>`
+              : ''
+          }
+        </div>
+
+        <!-- Hover-only / Selected-only mini street tag so streets stay legible -->
+        <div class="${
+          isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+        } pointer-events-none absolute bottom-full mb-1.5 z-40 transition-opacity duration-150 whitespace-nowrap max-w-[160px] px-2 py-0.5 rounded-xs bg-[#111317] border border-[#f4f1ea] text-left shadow -rotate-2">
+          <p class="font-grotesk text-[9px] font-extrabold uppercase tracking-tight text-[#ffe600] truncate leading-tight">${safeVenueName}</p>
+          <p class="text-[9px] text-[#f4f1ea] truncate leading-tight">${safeLeadTitle}</p>
         </div>
       `;
 
@@ -617,7 +449,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
 
       const marker = new maplibregl.Marker({
         element: bubbleEl,
-        anchor: 'bottom',
+        anchor: 'center',
       })
         .setLngLat([lon, lat])
         .addTo(map);
@@ -630,11 +462,8 @@ export const SnapMap: React.FC<SnapMapProps> = ({
       <div
         ref={containerRef}
         className="w-full h-full"
-        aria-label="Interactive 6-City tarra Street Sticker Map"
+        aria-label="Interactive 6-City Street Sticker Map"
       />
-      {/* Subtle bottom vignette so the bottom sticker dock pops cleanly */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#0d0e11]/85 to-transparent" />
     </div>
   );
 };
-

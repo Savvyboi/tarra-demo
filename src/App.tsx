@@ -1,16 +1,10 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
-  Flame,
-  Box,
   LocateFixed,
   RefreshCw,
   Search,
-  Sparkles,
   Share2,
-  Database,
-  Radio,
   Check,
-  MapPin,
   Calendar as CalendarIcon,
   Bookmark,
   Ticket,
@@ -19,6 +13,7 @@ import {
   LayoutList,
   ChevronDown,
   ChevronUp,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { CITIES, CITY_LIST, TOPICS } from './config/cities';
 import {
@@ -35,18 +30,11 @@ import {
   groupEventsByVenue,
 } from './services/linkedEventsClient';
 import {
-  buildUpcomingDaysStrip,
   doesEventOccurOnDate,
   parseDateKey,
 } from './utils/calendarUtils';
-import {
-  calculateDistanceKm,
-  formatDistance,
-} from './utils/distanceUtils';
-import {
-  CC_BY_4_URL,
-  LINKED_EVENTS_CREDIT_TEXT,
-} from './utils/licenseGuard';
+import { calculateDistanceKm } from './utils/distanceUtils';
+import { CC_BY_4_URL } from './utils/licenseGuard';
 import { SnapMap } from './components/Map/SnapMap';
 import { StoryPlayerModal } from './components/Story/StoryPlayerModal';
 import { EventCalendarModal } from './components/Calendar/EventCalendarModal';
@@ -112,16 +100,16 @@ export const App: React.FC = () => {
   const [freeOnly, setFreeOnly] = useState<boolean>(initial.freeOnly);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const [showDateStrip, setShowDateStrip] = useState<boolean>(
-    Boolean(initial.date)
-  );
-  const [dockCollapsed, setDockCollapsed] = useState(false);
+  // Snap Map-style ultra-minimal popover states (closed by default so < 5% screen is UI)
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [filterTrayOpen, setFilterTrayOpen] = useState(false);
+  const [cityPickerOpen, setCityPickerOpen] = useState(false);
+  const [moreToolsOpen, setMoreToolsOpen] = useState(false);
+
   const [calendarModalOpen, setCalendarModalOpen] = useState(false);
   const [agendaDrawerOpen, setAgendaDrawerOpen] = useState(false);
 
   const [mapStyle, setMapStyle] = useState<MapStyleId>('neon');
-  const [showHeatmap, setShowHeatmap] = useState(true);
-  const [show3DBuildings, setShow3DBuildings] = useState(true);
   const [focusCoordinates, setFocusCoordinates] = useState<
     [number, number] | null
   >(null);
@@ -133,9 +121,6 @@ export const App: React.FC = () => {
   const [dateSpecificEvents, setDateSpecificEvents] = useState<
     NormalizedEvent[]
   >([]);
-  const [dataSourceType, setDataSourceType] = useState<
-    'live-api' | 'indexeddb-cache' | 'static-feed' | 'offline-fallback'
-  >('live-api');
   const [loading, setLoading] = useState(true);
 
   const [savedEventIds, setSavedEventIds] = useState<string[]>(() => {
@@ -200,7 +185,6 @@ export const App: React.FC = () => {
       try {
         const result = await fetchCityEvents(cityId, forceRefresh, null);
         setBaseCityEvents(result.events);
-        setDataSourceType(result.source);
       } catch (err) {
         console.error('[tarra] Failed to load events for', cityId, err);
       } finally {
@@ -226,7 +210,6 @@ export const App: React.FC = () => {
       .then((res) => {
         if (!cancelled) {
           setDateSpecificEvents(res.events);
-          setDataSourceType(res.source);
         }
       })
       .catch((err) => {
@@ -330,12 +313,6 @@ export const App: React.FC = () => {
     });
   }, [events, selectedDate, timeFilter, topicFilter, freeOnly, searchQuery]);
 
-  // 14-day quick-pick strip annotated with counts
-  const upcomingDaysStrip = useMemo(
-    () => buildUpcomingDaysStrip(14, events),
-    [events]
-  );
-
   // Group filtered events into Venue Sticker Groups
   const venueGroups = useMemo(
     () => groupEventsByVenue(filteredEvents),
@@ -383,13 +360,13 @@ export const App: React.FC = () => {
     setFocusCoordinates(null);
     setHighlightedVenueId(null);
     setActiveCity(cityId);
+    setCityPickerOpen(false);
   };
 
   const handleSelectDate = useCallback((dateKey: string | null) => {
     setSelectedDate(dateKey);
     if (dateKey) {
       setTimeFilter('custom-date');
-      setShowDateStrip(true);
     } else {
       setTimeFilter('all');
     }
@@ -523,17 +500,13 @@ export const App: React.FC = () => {
     handleOpenVenueGroup(prevGroup);
   }, [selectedVenueGroup, venueGroups, handleOpenVenueGroup]);
 
-  const liveCount = useMemo(
-    () => filteredEvents.filter((e) => e.isLiveNow).length,
-    [filteredEvents]
-  );
-
   const cityMeta = CITIES[activeCity];
+  const activeTopicMeta =
+    TOPICS.find((t) => t.id === topicFilter) || TOPICS[0];
 
   const selectedDateLabel = useMemo(() => {
     if (!selectedDate) return null;
     return new Intl.DateTimeFormat('en-GB', {
-      weekday: 'short',
       day: 'numeric',
       month: 'short',
     }).format(parseDateKey(selectedDate));
@@ -555,620 +528,520 @@ export const App: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex flex-col w-full max-w-full h-dvh overflow-hidden bg-[#121417] text-[#f5f3eb] select-none">
+    <div className="relative w-full h-dvh overflow-hidden bg-[#121417] text-[#f5f3eb] select-none">
       {/* =====================================================================
-          TOP STREET-POLE HEADER BAR (Never overlaps map or list content)
+          100% FULL-BLEED CONTENT CANVAS (2D Map OR Street Pole Feed)
           ===================================================================== */}
-      <header className="shrink-0 w-full max-w-full min-w-0 z-30 bg-[#15181e] border-b-[2.5px] border-[#f4f1ea] shadow-[0_6px_20px_rgba(0,0,0,0.75)]">
-        {/* ROW 1: Brand Slap + View Mode Toggle + 6-City Street Plates + Search/Stash/GPS */}
-        <div className="px-2.5 sm:px-4 py-1.5 sm:py-2 flex flex-wrap items-center justify-between gap-2 border-b border-white/15">
-          {/* Left: TARRA Brand Sticker + View Switcher */}
-          <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3 w-full sm:w-auto">
-            {/* Die-cut TARRA Brand Logo Slap */}
-            <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 py-1 rounded-md bg-[#ffe600] text-[#0d0e11] border-2 border-[#0d0e11] outline-2 outline-[#f4f1ea] shadow-[3px_3px_0px_#07080a] -rotate-1 shrink-0">
-              <h1 className="font-display-slap text-base sm:text-lg uppercase tracking-tight leading-none">
-                tarra
-              </h1>
-              <span className="px-1.5 py-[1px] rounded-xs bg-[#0d0e11] text-[#ffe600] font-mono-stamp text-[9px] font-bold uppercase tracking-tighter flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#ff2a85] animate-ping" />
-                {liveCount} LIVE
-              </span>
-            </div>
+      {viewMode === 'map' ? (
+        <SnapMap
+          activeCity={activeCity}
+          venueGroups={venueGroups}
+          selectedVenueId={
+            selectedVenueGroup?.venueId || highlightedVenueId
+          }
+          focusCoordinates={focusCoordinates}
+          mapStyle={mapStyle}
+          userLocation={userLocation}
+          onSelectVenueGroup={handleOpenVenueGroup}
+        />
+      ) : (
+        <EventListView
+          activeCity={activeCity}
+          events={filteredEvents}
+          savedEventIds={savedEventIds}
+          onToggleSaveEvent={handleToggleSaveEvent}
+          onPlayStory={handleSelectSingleEvent}
+          onResetFilters={resetAllFilters}
+        />
+      )}
 
-            {/* Source / Count Metadata Stamp (visible on xl screens) */}
-            <div className="hidden xl:flex flex-col font-mono-stamp text-[10px] text-[#b8b4a8] leading-tight">
-              <span className="flex items-center gap-1 text-[#f4f1ea] font-bold">
-                {dataSourceType === 'live-api' ? (
-                  <>
-                    <Radio className="w-3 h-3 text-[#22c55e]" />
-                    <span>6AIKA LIVE</span>
-                  </>
-                ) : dataSourceType === 'indexeddb-cache' ? (
-                  <>
-                    <Database className="w-3 h-3 text-[#ffe600]" />
-                    <span>IDB CACHE</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-3 h-3 text-[#ff5500]" />
-                    <span>CITY FEED</span>
-                  </>
-                )}
-              </span>
-              <span>
-                {filteredEvents.length} slaps • {venueGroups.length} spots
-              </span>
-            </div>
+      {/* =====================================================================
+          SNAP-MAP STYLE MINIMAL FLOATING ICONS (< 5% OF SCREEN AREA)
+          ===================================================================== */}
 
-            {/* Dedicated MAP vs POLE FEED Switcher */}
+      {/* TOP-LEFT: Search Slap Button + Filter Palette Slap Button */}
+      <search
+        aria-label="Event search and filter controls"
+        className="pointer-events-none fixed top-3 left-3 z-30 flex flex-col items-start gap-2"
+      >
+        <div className="pointer-events-auto flex items-center gap-2">
+          {/* Search Icon Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setSearchOpen((v) => !v);
+              setFilterTrayOpen(false);
+              setCityPickerOpen(false);
+            }}
+            aria-label="Toggle search input"
+            aria-expanded={searchOpen}
+            style={
+              {
+                '--slap-rot': '-5deg',
+                '--slap-radius': '54% 46% 48% 52% / 48% 54% 46% 52%',
+              } as React.CSSProperties
+            }
+            className={`organic-slap-btn w-10 h-10 flex items-center justify-center border-2 cursor-pointer ${
+              searchOpen || searchQuery.trim()
+                ? 'bg-[#ffe600] text-[#0d0e11] border-[#0d0e11] outline-2 outline-[#f4f1ea]'
+                : 'bg-[#14171c]/90 hover:bg-[#1f242c] text-[#f4f1ea] border-[#f4f1ea]'
+            }`}
+          >
+            <Search aria-hidden="true" className="w-4 h-4" />
+          </button>
+
+          {/* Expandable Inline Search Slap */}
+          {searchOpen && (
             <div
-              role="tablist"
-              aria-label="Switch between Street Map and Pole Feed"
-              className="flex items-center p-0.5 rounded-lg bg-[#0d0e11] border-2 border-[#f4f1ea] shadow-[2px_3px_0px_#07080a] shrink-0"
+              style={
+                {
+                  '--slap-rot': '1.2deg',
+                  '--slap-radius': '10px 4px 12px 5px',
+                } as React.CSSProperties
+              }
+              className="organic-slap-btn flex items-center bg-[#14171c]/95 border-2 border-[#f4f1ea] px-2.5 py-1 animate-fade-in"
             >
+              <input
+                type="search"
+                autoFocus
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={`Find in ${cityMeta.name}...`}
+                aria-label={`Search events in ${cityMeta.name}`}
+                className="bg-transparent font-mono-stamp text-xs text-[#f4f1ea] placeholder:text-[#8a867a] focus:outline-none w-36 sm:w-48"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search query"
+                  className="ml-1 text-[#ff2a85] hover:text-white cursor-pointer"
+                >
+                  <X aria-hidden="true" className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Filter Palette Slap Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setFilterTrayOpen((v) => !v);
+              setSearchOpen(false);
+              setCityPickerOpen(false);
+            }}
+            aria-label="Toggle sticker filters"
+            aria-expanded={filterTrayOpen}
+            style={
+              {
+                '--slap-rot': '6deg',
+                '--slap-radius': '46% 54% 52% 48% / 52% 46% 54% 48%',
+              } as React.CSSProperties
+            }
+            className={`organic-slap-btn relative w-10 h-10 flex items-center justify-center border-2 cursor-pointer ${
+              filterTrayOpen || hasActiveFilters
+                ? 'bg-[#ff2a85] text-white border-[#f4f1ea]'
+                : 'bg-[#14171c]/90 hover:bg-[#1f242c] text-[#f4f1ea] border-[#f4f1ea]'
+            }`}
+          >
+            <SlidersHorizontal aria-hidden="true" className="w-4 h-4" />
+            {hasActiveFilters && (
+              <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[#ffe600] border border-[#0d0e11]" />
+            )}
+          </button>
+        </div>
+
+        {/* Floating Chaotic Sticker Filter Palette (Only visible when toggled open) */}
+        {filterTrayOpen && (
+          <div className="pointer-events-auto max-w-[290px] sm:max-w-xs p-3 rounded-[14px_6px_16px_8px] bg-[#14171c]/95 border-2 border-[#f4f1ea] shadow-[4px_5px_0px_#07080a] space-y-2.5 animate-fade-in -rotate-1">
+            {/* Time & Free Slaps */}
+            <div className="flex flex-wrap gap-1.5">
+              {(
+                [
+                  { id: 'all', label: 'All', rot: '-2deg' },
+                  { id: 'live', label: '🔥 Live', rot: '2.5deg' },
+                  { id: 'tonight', label: '🌙 Tonight', rot: '-1.8deg' },
+                  { id: 'weekend', label: '🎉 Weekend', rot: '1.9deg' },
+                ] as const
+              ).map((tf) => {
+                const active = !selectedDate && timeFilter === tf.id;
+                return (
+                  <button
+                    key={tf.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDate(null);
+                      setTimeFilter(tf.id);
+                    }}
+                    style={
+                      {
+                        '--slap-rot': tf.rot,
+                        '--slap-radius': '8px 3px 9px 4px',
+                      } as React.CSSProperties
+                    }
+                    className={`organic-slap-btn px-2 py-1 font-mono-stamp text-[10px] font-bold uppercase cursor-pointer border ${
+                      active
+                        ? 'bg-[#ff5500] text-white border-[#f4f1ea]'
+                        : 'bg-[#1d2128] text-[#c7c4b8] border-white/20 hover:text-white'
+                    }`}
+                  >
+                    {tf.label}
+                  </button>
+                );
+              })}
+
               <button
                 type="button"
-                role="tab"
-                aria-selected={viewMode === 'map'}
-                onClick={() => setViewMode('map')}
-                className={`px-2.5 py-1 rounded-md font-grotesk text-xs font-extrabold uppercase tracking-tight transition-all cursor-pointer flex items-center gap-1.5 ${
-                  viewMode === 'map'
-                    ? 'bg-[#ffe600] text-[#0d0e11] shadow'
-                    : 'text-[#d5d2c8] hover:text-white'
+                onClick={() => setFreeOnly((f) => !f)}
+                style={
+                  {
+                    '--slap-rot': '-3deg',
+                    '--slap-radius': '4px 10px 5px 9px',
+                  } as React.CSSProperties
+                }
+                className={`organic-slap-btn px-2 py-1 font-mono-stamp text-[10px] font-bold uppercase flex items-center gap-1 cursor-pointer border ${
+                  freeOnly
+                    ? 'bg-[#22c55e] text-[#0d0e11] border-[#0d0e11] outline-1 outline-[#f4f1ea]'
+                    : 'bg-[#1d2128] text-[#22c55e] border-[#22c55e]/40'
                 }`}
               >
-                <MapIcon className="w-3.5 h-3.5" />
-                <span>Map</span>
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={viewMode === 'list'}
-                onClick={() => setViewMode('list')}
-                className={`px-2.5 py-1 rounded-md font-grotesk text-xs font-extrabold uppercase tracking-tight transition-all cursor-pointer flex items-center gap-1.5 ${
-                  viewMode === 'list'
-                    ? 'bg-[#ffe600] text-[#0d0e11] shadow'
-                    : 'text-[#d5d2c8] hover:text-white'
-                }`}
-              >
-                <LayoutList className="w-3.5 h-3.5" />
-                <span>Pole ({filteredEvents.length})</span>
+                <Ticket aria-hidden="true" className="w-3 h-3" />
+                <span>Free</span>
               </button>
             </div>
-          </div>
 
-          {/* Center: 6-City Street Sign Switcher */}
+            {/* Category Slaps */}
+            <div className="flex flex-wrap gap-1.5 pt-2 border-t border-white/15">
+              {TOPICS.map((topic, i) => {
+                const active = topicFilter === topic.id;
+                const rot = i % 2 === 0 ? '-2.2deg' : '2.4deg';
+                return (
+                  <button
+                    key={topic.id}
+                    type="button"
+                    onClick={() => setTopicFilter(topic.id)}
+                    style={
+                      {
+                        '--slap-rot': rot,
+                        '--slap-radius': '9px 4px 10px 5px',
+                        ...(active
+                          ? {
+                              backgroundColor: topic.slapBg,
+                              color: topic.slapText,
+                            }
+                          : {}),
+                      } as React.CSSProperties
+                    }
+                    className={`organic-slap-btn px-2 py-1 font-grotesk text-[11px] font-extrabold uppercase tracking-tight flex items-center gap-1 cursor-pointer border ${
+                      active
+                        ? 'border-[#0d0e11] outline-1 outline-[#f4f1ea]'
+                        : 'bg-[#1d2128] text-[#d5d2c8] border-white/15 hover:text-white'
+                    }`}
+                  >
+                    <span>{topic.emoji}</span>
+                    <span>{topic.label.split(' ')[0]}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {hasActiveFilters && (
+              <div className="pt-1 flex justify-end">
+                <button
+                  type="button"
+                  onClick={resetAllFilters}
+                  className="px-2 py-0.5 rounded-xs bg-[#ff2a85] text-white font-mono-stamp text-[10px] font-bold uppercase cursor-pointer"
+                >
+                  Peel All Filters
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </search>
+
+      {/* TOP-CENTER: Compact City Slap Pill (like "Snap Map" center header) */}
+      <div className="pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center">
+        <button
+          type="button"
+          onClick={() => {
+            setCityPickerOpen((v) => !v);
+            setFilterTrayOpen(false);
+            setSearchOpen(false);
+          }}
+          aria-label={`Current city: ${cityMeta.name}. Click to switch city.`}
+          aria-expanded={cityPickerOpen}
+          style={
+            {
+              '--slap-rot': '-1.5deg',
+              '--slap-radius': '14px 6px 12px 5px',
+            } as React.CSSProperties
+          }
+          className={`pointer-events-auto organic-slap-btn px-3.5 py-1.5 ${cityMeta.badgeColor} border-2 border-[#0d0e11] outline-2 outline-[#f4f1ea] font-display-slap text-xs sm:text-sm uppercase tracking-tight flex items-center gap-1.5 cursor-pointer`}
+        >
+          <span>{cityMeta.name}</span>
+          {topicFilter !== 'all' && (
+            <span className="text-xs leading-none">{activeTopicMeta.emoji}</span>
+          )}
+          {selectedDateLabel && (
+            <span className="px-1.5 py-[1px] rounded-xs bg-[#0d0e11] text-[#ffe600] font-mono-stamp text-[9px] font-bold">
+              {selectedDateLabel}
+            </span>
+          )}
+          <ChevronDown aria-hidden="true" className="w-3.5 h-3.5 opacity-80" />
+        </button>
+
+        {/* Floating Chaotic 6-City Slap Picker */}
+        {cityPickerOpen && (
           <nav
             aria-label="6-City Switcher"
-            className="flex items-center gap-1 overflow-x-auto no-scrollbar scroll-fade-right max-w-full min-w-0 py-0.5 order-3 lg:order-2 w-full lg:w-auto"
+            className="pointer-events-auto mt-2 p-2 rounded-[12px_5px_14px_6px] bg-[#14171c]/95 border-2 border-[#f4f1ea] shadow-[4px_5px_0px_#07080a] flex flex-wrap justify-center gap-1.5 max-w-[260px] animate-fade-in rotate-1"
           >
-            {CITY_LIST.map((c) => {
+            {CITY_LIST.map((c, idx) => {
               const isSelected = c.id === activeCity;
+              const angle = idx % 2 === 0 ? '-3deg' : '2.8deg';
               return (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => handleCitySelect(c.id)}
-                  className={`px-2.5 py-1 rounded-md font-grotesk text-xs font-extrabold uppercase tracking-tight transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 border shrink-0 ${
+                  style={
+                    {
+                      '--slap-rot': angle,
+                      '--slap-radius': '10px 4px 11px 5px',
+                    } as React.CSSProperties
+                  }
+                  className={`organic-slap-btn px-2.5 py-1 font-display-slap text-xs uppercase tracking-tight cursor-pointer border-2 ${
                     isSelected
-                      ? `${c.badgeColor} border-[#0d0e11] outline-2 outline-[#f4f1ea] shadow-[2px_2px_0px_#07080a]`
-                      : 'bg-[#111317] text-[#c7c4b8] border-white/15 hover:border-white/40 hover:text-white'
+                      ? `${c.badgeColor} border-[#0d0e11] outline-1 outline-[#f4f1ea]`
+                      : 'bg-[#1d2128] text-[#f4f1ea] border-white/25 hover:border-white'
                   }`}
                 >
-                  <span>{c.name}</span>
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      isSelected
-                        ? 'bg-current'
-                        : c.dataMechanism === 'live-api'
-                          ? 'bg-[#22c55e]'
-                          : 'bg-[#ffe600]'
-                    }`}
-                  />
+                  {c.name}
                 </button>
               );
             })}
           </nav>
-
-          {/* Right: Search Input + Saved Stash + GPS + Share + Refresh */}
-          <div className="flex items-center gap-1.5 order-2 lg:order-3 w-full sm:w-auto min-w-0">
-            {/* Search Input */}
-            <div className="relative flex items-center flex-1 sm:flex-initial min-w-0">
-              <Search className="w-3.5 h-3.5 text-[#a8a498] absolute left-2.5 pointer-events-none" />
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={`Search ${cityMeta.name}...`}
-                aria-label={`Search events in ${cityMeta.name}`}
-                className="pl-7 pr-2.5 py-1 rounded-md bg-[#0d0e11] border border-[#f4f1ea]/40 font-mono-stamp text-xs text-[#f4f1ea] placeholder:text-[#8a867a] focus:outline-none focus:border-[#ffe600] w-full sm:w-40 min-w-0"
-              />
-            </div>
-
-            {/* Saved Stash / Schedule Drawer Button */}
-            <button
-              type="button"
-              onClick={() => setAgendaDrawerOpen(true)}
-              className="px-2.5 py-1 rounded-md bg-[#22262e] hover:bg-[#2e333d] border border-[#f4f1ea]/50 font-grotesk text-xs font-extrabold uppercase tracking-tight text-[#f4f1ea] flex items-center gap-1 cursor-pointer shadow-[2px_2px_0px_#07080a] shrink-0"
-              title="Open Saved Sticker Stash & Day Schedule"
-            >
-              <Bookmark className="w-3.5 h-3.5 text-[#ff2a85]" />
-              <span className="hidden sm:inline">Stash</span>
-              {savedEventIds.length > 0 && (
-                <span className="px-1.5 py-[1px] rounded-xs bg-[#ff2a85] font-mono-stamp text-[10px] font-bold text-white">
-                  {savedEventIds.length}
-                </span>
-              )}
-            </button>
-
-            {/* GPS Near Me */}
-            <button
-              type="button"
-              onClick={handleNearMe}
-              title="Use My GPS Location for Near Me & Event Distances"
-              className={`px-2 py-1 rounded-md border font-mono-stamp text-[11px] font-bold uppercase cursor-pointer flex items-center gap-1 shadow-[2px_2px_0px_#07080a] shrink-0 ${
-                userLocation
-                  ? 'bg-[#22c55e] border-[#0d0e11] text-[#0d0e11]'
-                  : 'bg-[#22262e] hover:bg-[#2e333d] border-[#f4f1ea]/40 text-[#ffe600]'
-              }`}
-            >
-              <LocateFixed
-                className={`w-3.5 h-3.5 ${locating ? 'animate-spin' : ''}`}
-              />
-              <span className="hidden md:inline">
-                {userLocation ? 'GPS ON' : 'GPS'}
-              </span>
-            </button>
-
-            {/* Share View URL */}
-            <button
-              type="button"
-              onClick={async () => {
-                const ok = await handleShareDeepLink();
-                if (ok) {
-                  setShareBarCopied(true);
-                  setTimeout(() => setShareBarCopied(false), 2200);
-                }
-              }}
-              className="p-1.5 rounded-md bg-[#22262e] hover:bg-[#2e333d] border border-white/20 text-[#f4f1ea] cursor-pointer shrink-0"
-              title="Copy shareable link for current view"
-              aria-label="Share current view link"
-            >
-              {shareBarCopied ? (
-                <Check className="w-3.5 h-3.5 text-[#22c55e]" />
-              ) : (
-                <Share2 className="w-3.5 h-3.5" />
-              )}
-            </button>
-
-            {/* Refresh Feed */}
-            <button
-              type="button"
-              onClick={() => loadCity(activeCity, true)}
-              title="Refresh City Feed"
-              aria-label="Refresh City Feed"
-              className="p-1.5 rounded-md bg-[#22262e] hover:bg-[#2e333d] border border-white/20 text-[#d5d2c8] cursor-pointer shrink-0"
-            >
-              <RefreshCw
-                className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#ffe600]' : ''}`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* ROW 2: Coherent Single-Row Scrollable Sticker Filter Bar (Time + Calendar + Categories + Free + Map Controls) */}
-        <div className="px-2.5 sm:px-4 py-1.5 bg-[#111317] flex items-center justify-between gap-2 overflow-x-auto no-scrollbar scroll-fade-right">
-          <div className="flex items-center gap-1.5 shrink-0">
-            {/* Time Presets */}
-            {(
-              [
-                { id: 'all', label: 'All Dates' },
-                { id: 'live', label: '🔥 Live' },
-                { id: 'tonight', label: '🌙 Tonight' },
-                { id: 'weekend', label: '🎉 Weekend' },
-              ] as const
-            ).map((tf) => {
-              const active = !selectedDate && timeFilter === tf.id;
-              return (
-                <button
-                  key={tf.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedDate(null);
-                    setTimeFilter(tf.id);
-                  }}
-                  className={`px-2 py-0.5 rounded-sm font-mono-stamp text-[11px] font-bold uppercase transition-all cursor-pointer whitespace-nowrap border ${
-                    active
-                      ? 'bg-[#ff5500] text-white border-[#f4f1ea] shadow-[2px_2px_0px_#07080a]'
-                      : 'bg-[#1a1d23] text-[#c7c4b8] border-white/15 hover:text-white'
-                  }`}
-                >
-                  {tf.label}
-                </button>
-              );
-            })}
-
-            {/* Calendar Modal Trigger */}
-            <button
-              type="button"
-              onClick={() => setCalendarModalOpen(true)}
-              className={`px-2 py-0.5 rounded-sm font-mono-stamp text-[11px] font-bold uppercase transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 border ${
-                selectedDate
-                  ? 'bg-[#ffe600] text-[#0d0e11] border-[#0d0e11] outline-1 outline-[#f4f1ea] shadow-[2px_2px_0px_#07080a]'
-                  : 'bg-[#1a1d23] hover:bg-[#262b34] border-[#ffe600]/50 text-[#ffe600]'
-              }`}
-              title="Open Month Calendar"
-            >
-              <CalendarIcon className="w-3 h-3" />
-              <span>{selectedDateLabel || 'Date'}</span>
-            </button>
-
-            {selectedDate && (
-              <button
-                type="button"
-                onClick={() => handleSelectDate(null)}
-                aria-label="Clear selected calendar date"
-                className="p-0.5 rounded-sm bg-[#ff2a85] text-white cursor-pointer"
-                title="Clear date filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setShowDateStrip((s) => !s)}
-              className={`px-1.5 py-0.5 rounded-sm font-mono-stamp text-[10px] font-bold uppercase transition-colors cursor-pointer border ${
-                showDateStrip
-                  ? 'bg-[#f4f1ea] text-[#0d0e11] border-[#0d0e11]'
-                  : 'bg-[#1a1d23] text-[#a8a498] border-white/15 hover:text-white'
-              }`}
-              title="Toggle 14-day quick strip"
-            >
-              14d
-            </button>
-
-            <div className="h-4 w-[2px] bg-white/15 mx-0.5 shrink-0" />
-
-            {/* Topic Category Slaps */}
-            {TOPICS.map((topic) => {
-              const active = topicFilter === topic.id;
-              return (
-                <button
-                  key={topic.id}
-                  type="button"
-                  onClick={() => setTopicFilter(topic.id)}
-                  className={`px-2 py-0.5 rounded-sm font-grotesk text-[11px] font-bold uppercase tracking-tight transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 border ${
-                    active
-                      ? 'border-[#0d0e11] outline-1 outline-[#f4f1ea] shadow-[2px_2px_0px_#07080a]'
-                      : 'bg-[#1a1d23] text-[#c7c4b8] border-white/15 hover:text-white'
-                  }`}
-                  style={
-                    active
-                      ? {
-                          backgroundColor: topic.slapBg,
-                          color: topic.slapText,
-                        }
-                      : undefined
-                  }
-                >
-                  <span>{topic.emoji}</span>
-                  <span>{topic.label}</span>
-                </button>
-              );
-            })}
-
-            {/* Free Admission Stamp Toggle */}
-            <button
-              type="button"
-              onClick={() => setFreeOnly((f) => !f)}
-              className={`px-2 py-0.5 rounded-sm font-mono-stamp text-[11px] font-bold uppercase transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 border shrink-0 ${
-                freeOnly
-                  ? 'bg-[#22c55e] text-[#0d0e11] border-[#0d0e11] outline-1 outline-[#f4f1ea] shadow-[2px_2px_0px_#07080a]'
-                  : 'bg-[#1a1d23] text-[#22c55e] border-[#22c55e]/40 hover:bg-[#22c55e]/15'
-              }`}
-              title="Show only free admission events"
-            >
-              <Ticket className="w-3 h-3" />
-              <span>Free</span>
-            </button>
-
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={resetAllFilters}
-                className="px-2 py-0.5 rounded-sm bg-[#ff2a85] text-white font-mono-stamp text-[10px] font-bold uppercase whitespace-nowrap cursor-pointer"
-              >
-                Reset
-              </button>
-            )}
-          </div>
-
-          {/* Map-specific surface & layer toggles (compact right side) */}
-          {viewMode === 'map' && (
-            <div className="flex items-center gap-1 shrink-0 pl-2 border-l border-white/15">
-              {(
-                [
-                  { id: 'midnight', label: 'Asphalt' },
-                  { id: 'neon', label: 'Steel' },
-                  { id: 'daylight', label: 'Concrete' },
-                ] as const
-              ).map((st) => (
-                <button
-                  key={st.id}
-                  type="button"
-                  onClick={() => setMapStyle(st.id)}
-                  className={`px-2 py-0.5 rounded-sm font-mono-stamp text-[10px] font-bold uppercase transition-colors cursor-pointer whitespace-nowrap border ${
-                    mapStyle === st.id
-                      ? 'bg-[#f4f1ea] text-[#0d0e11] border-[#0d0e11]'
-                      : 'bg-[#1a1d23] text-[#b8b4a8] border-white/15 hover:text-white'
-                  }`}
-                >
-                  {st.label}
-                </button>
-              ))}
-
-              <button
-                type="button"
-                onClick={() => setShowHeatmap((v) => !v)}
-                title="Toggle Thermal Heatmap Layer"
-                className={`p-1 rounded-sm border transition-colors cursor-pointer ${
-                  showHeatmap
-                    ? 'bg-[#ff5500] border-[#f4f1ea] text-white'
-                    : 'bg-[#1a1d23] border-white/15 text-[#9e9a8e] hover:text-white'
-                }`}
-              >
-                <Flame className="w-3 h-3" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShow3DBuildings((v) => !v)}
-                title="Toggle 3D Extruded Buildings (zoom >= 14.5)"
-                className={`p-1 rounded-sm border transition-colors cursor-pointer ${
-                  show3DBuildings
-                    ? 'bg-[#ffe600] border-[#0d0e11] text-[#0d0e11]'
-                    : 'bg-[#1a1d23] border-white/15 text-[#9e9a8e] hover:text-white'
-                }`}
-              >
-                <Box className="w-3 h-3" />
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* ROW 3 (Collapsible): 14-Day Horizontal Quick-Pick Date Sticker Strip */}
-        {showDateStrip && (
-          <div className="px-2.5 sm:px-4 py-1.5 bg-[#0d0e11] border-t border-white/15 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-fade-right animate-fade-in">
-            <button
-              type="button"
-              onClick={() => setCalendarModalOpen(true)}
-              className="shrink-0 px-2.5 py-1 rounded-sm bg-[#ffe600] text-[#0d0e11] font-mono-stamp text-[10px] font-bold uppercase flex items-center gap-1 cursor-pointer"
-            >
-              <CalendarIcon className="w-3 h-3" />
-              <span>Month</span>
-            </button>
-
-            {upcomingDaysStrip.map((dayItem) => {
-              const isSelected = selectedDate === dayItem.dateKey;
-              return (
-                <button
-                  key={dayItem.dateKey}
-                  type="button"
-                  onClick={() =>
-                    handleSelectDate(isSelected ? null : dayItem.dateKey)
-                  }
-                  className={`shrink-0 px-2.5 py-0.5 rounded-sm border text-left transition-all cursor-pointer flex items-center gap-1.5 ${
-                    isSelected
-                      ? 'bg-[#ffe600] text-[#0d0e11] border-[#f4f1ea] font-black shadow-[2px_2px_0px_#07080a]'
-                      : 'bg-[#181b20] hover:bg-[#22262e] border-white/15 text-[#f4f1ea]'
-                  }`}
-                >
-                  <div>
-                    <div className="font-mono-stamp text-[9px] font-bold uppercase leading-tight">
-                      {dayItem.weekdayShort}
-                    </div>
-                    <div
-                      className={`font-grotesk text-[10px] font-bold leading-tight ${
-                        isSelected ? 'text-[#0d0e11]' : 'text-[#c7c4b8]'
-                      }`}
-                    >
-                      {dayItem.dayMonthLabel}
-                    </div>
-                  </div>
-                  <span
-                    className={`px-1 py-[1px] rounded-xs font-mono-stamp text-[9px] font-bold ${
-                      isSelected
-                        ? 'bg-[#0d0e11] text-[#ffe600]'
-                        : dayItem.eventCount > 0
-                          ? 'bg-[#262b33] text-[#ffe600]'
-                          : 'bg-white/5 text-[#68665e]'
-                    }`}
-                  >
-                    {dayItem.eventCount}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </header>
-
-      {/* =====================================================================
-          MAIN VIEWPORT AREA (Map View OR Pole Sticker Feed View)
-          ===================================================================== */}
-      <div className="relative flex-1 min-h-0 w-full overflow-hidden">
-        {viewMode === 'map' ? (
-          <>
-            <SnapMap
-              activeCity={activeCity}
-              venueGroups={venueGroups}
-              selectedVenueId={
-                selectedVenueGroup?.venueId || highlightedVenueId
-              }
-              focusCoordinates={focusCoordinates}
-              mapStyle={mapStyle}
-              show3DBuildings={show3DBuildings}
-              showHeatmap={showHeatmap}
-              userLocation={userLocation}
-              onSelectVenueGroup={handleOpenVenueGroup}
-            />
-
-            {/* Collapsible Bottom Pole Sticker Dock in Map View */}
-            <div className="pointer-events-none absolute inset-x-0 bottom-2 z-20 px-2.5 sm:px-4 flex flex-col items-start gap-1.5">
-              {/* Toggle Pill for Bottom Sticker Strip */}
-              <div className="pointer-events-auto flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setDockCollapsed((c) => !c)}
-                  className="px-2.5 py-1 rounded-md bg-[#121418] border-2 border-[#f4f1ea] shadow-[2px_3px_0px_#07080a] font-mono-stamp text-[10px] font-bold uppercase text-[#ffe600] flex items-center gap-1.5 cursor-pointer"
-                >
-                  <span>
-                    {cityMeta.name} Pole Tray ({venueGroups.length} spots)
-                  </span>
-                  {dockCollapsed ? (
-                    <ChevronUp className="w-3.5 h-3.5" />
-                  ) : (
-                    <ChevronDown className="w-3.5 h-3.5" />
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setViewMode('list')}
-                  className="px-2.5 py-1 rounded-md bg-[#ffe600] text-[#0d0e11] border-2 border-[#0d0e11] shadow-[2px_3px_0px_#07080a] font-grotesk text-[11px] font-extrabold uppercase tracking-tight flex items-center gap-1 cursor-pointer"
-                >
-                  <LayoutList className="w-3 h-3" />
-                  <span>Open Full Pole Feed</span>
-                </button>
-              </div>
-
-              {!dockCollapsed && (
-                <div className="pointer-events-auto w-full flex items-center gap-2.5 overflow-x-auto no-scrollbar scroll-fade-right py-2 px-2.5 rounded-xl bg-[#14171c]/95 border-[2.5px] border-[#f4f1ea] shadow-[4px_5px_0px_#07080a]">
-                  {venueGroups.length === 0 ? (
-                    <div className="py-1.5 px-2 text-xs text-[#d5d2c8] flex items-center gap-2">
-                      <span>
-                        No event stickers match this filter in {cityMeta.name}.
-                      </span>
-                      <button
-                        type="button"
-                        onClick={resetAllFilters}
-                        className="px-2.5 py-1 rounded-md bg-[#ffe600] text-[#0d0e11] border border-[#0d0e11] font-mono-stamp font-bold text-[11px] uppercase cursor-pointer"
-                      >
-                        Reset Filters
-                      </button>
-                    </div>
-                  ) : (
-                    venueGroups.slice(0, 24).map((vg) => {
-                      const lead = vg.events[0];
-                      const topicMeta =
-                        TOPICS.find((t) => t.id === vg.topCategory) ||
-                        TOPICS[0];
-                      return (
-                        <button
-                          key={vg.venueId}
-                          type="button"
-                          onClick={() => handleOpenVenueGroup(vg)}
-                          className="group shrink-0 flex items-center gap-2.5 pr-3 pl-1.5 py-1 rounded-lg bg-[#1d2128] hover:bg-[#262b34] border-2 border-[#f4f1ea] shadow-[2px_3px_0px_#07080a] transition-transform hover:-translate-y-0.5 cursor-pointer text-left"
-                        >
-                          <div className="relative w-10 h-10 rounded-md border-2 border-[#0d0e11] bg-[#111317] overflow-hidden flex items-center justify-center shrink-0">
-                            {vg.coverImageUrl ? (
-                              <img
-                                src={vg.coverImageUrl}
-                                alt=""
-                                loading="lazy"
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div
-                                className="w-full h-full flex items-center justify-center text-base"
-                                style={{
-                                  backgroundColor: topicMeta.slapBg,
-                                  color: topicMeta.slapText,
-                                }}
-                              >
-                                {vg.topEmoji}
-                              </div>
-                            )}
-                            {vg.hasLiveEvent && (
-                              <span className="absolute bottom-0 inset-x-0 bg-[#ff2a85] font-mono-stamp text-[7px] font-bold uppercase text-center text-white leading-tight">
-                                LIVE
-                              </span>
-                            )}
-                          </div>
-                          <div className="max-w-[140px]">
-                            <p className="font-grotesk text-[11px] font-extrabold uppercase tracking-tight text-[#ffe600] truncate">
-                              {vg.venueName}
-                            </p>
-                            <p className="text-[10px] text-[#f4f1ea] truncate">
-                              {lead.title}
-                            </p>
-                            <p className="font-mono-stamp text-[9px] text-[#b8b4a8] font-bold flex items-center gap-1">
-                              <MapPin className="w-2.5 h-2.5 text-[#ff2a85]" />
-                              <span>
-                                {formatDistance(vg.distanceKm)} •{' '}
-                                {vg.events.length}{' '}
-                                {vg.events.length === 1 ? 'slap' : 'slaps'}
-                              </span>
-                            </p>
-                          </div>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
-          </>
-        ) : (
-          <EventListView
-            activeCity={activeCity}
-            events={filteredEvents}
-            selectedDate={selectedDate}
-            userLocation={userLocation}
-            locating={locating}
-            savedEventIds={savedEventIds}
-            onRequestUserLocation={handleNearMe}
-            onToggleSaveEvent={handleToggleSaveEvent}
-            onPlayStory={handleSelectSingleEvent}
-            onShowOnMap={handleShowEventOnMap}
-            onResetFilters={resetAllFilters}
-          />
         )}
       </div>
 
-      {/* =====================================================================
-          BOTTOM STENCIL ATTRIBUTION BAR (Mandatory 6Aika CC BY 4.0 & OpenFreeMap)
-          ===================================================================== */}
-      <footer className="shrink-0 w-full max-w-full min-w-0 overflow-hidden z-30 bg-[#0d0e11] border-t border-white/15 px-3 py-1 font-mono-stamp text-[10px] text-[#9e9a8e] flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
-          <span className="font-bold text-[#ffe600] shrink-0">TARRA</span>
-          <span className="shrink-0">//</span>
-          <span className="truncate min-w-0">{LINKED_EVENTS_CREDIT_TEXT}</span>
-          <span className="shrink-0">•</span>
-          <a
-            href={CC_BY_4_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#ffe600] hover:underline font-bold shrink-0"
+      {/* RIGHT RAIL: Vertical Stack of Small Organic Sticker Icons (Snap Map Style) */}
+      <aside
+        aria-label="Map and Pole quick actions"
+        className="pointer-events-none fixed top-3 right-3 z-30 flex flex-col items-center gap-2"
+      >
+        <div className="pointer-events-auto flex flex-col items-center gap-2 p-1.5 rounded-[22px_18px_24px_16px] bg-[#14171c]/75 backdrop-blur-xs border border-white/15">
+          {/* 1. Switch Map <-> Pole Feed (Hazard Yellow Icon Button, like Snap Map's yellow card icon) */}
+          <button
+            type="button"
+            onClick={() =>
+              setViewMode((v) => (v === 'map' ? 'list' : 'map'))
+            }
+            aria-label={
+              viewMode === 'map'
+                ? 'Switch to Street Pole Feed'
+                : 'Switch to 2D Street Map'
+            }
+            style={
+              {
+                '--slap-rot': '5deg',
+                '--slap-radius': '48% 52% 55% 45% / 53% 47% 53% 47%',
+              } as React.CSSProperties
+            }
+            className="organic-slap-btn w-10 h-10 flex items-center justify-center bg-[#ffe600] text-[#0d0e11] border-2 border-[#0d0e11] outline-1 outline-[#f4f1ea] cursor-pointer"
           >
-            CC BY 4.0
-          </a>
+            {viewMode === 'map' ? (
+              <LayoutList aria-hidden="true" className="w-4 h-4" />
+            ) : (
+              <MapIcon aria-hidden="true" className="w-4 h-4" />
+            )}
+          </button>
+
+          {/* 2. Month Calendar Picker Icon Button */}
+          <button
+            type="button"
+            onClick={() => setCalendarModalOpen(true)}
+            aria-label="Open Month Calendar"
+            style={
+              {
+                '--slap-rot': '-6deg',
+                '--slap-radius': '53% 47% 46% 54% / 47% 53% 47% 53%',
+              } as React.CSSProperties
+            }
+            className={`organic-slap-btn relative w-9 h-9 flex items-center justify-center border-2 cursor-pointer ${
+              selectedDate
+                ? 'bg-[#ff5500] text-white border-[#f4f1ea]'
+                : 'bg-[#1d2128] hover:bg-[#282d37] text-[#f4f1ea] border-[#f4f1ea]/80'
+            }`}
+          >
+            <CalendarIcon aria-hidden="true" className="w-4 h-4" />
+            {selectedDate && (
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#ffe600] border border-[#0d0e11]" />
+            )}
+          </button>
+
+          {/* 3. Saved Sticker Stash Drawer Button */}
+          <button
+            type="button"
+            onClick={() => setAgendaDrawerOpen(true)}
+            aria-label={`Open Saved Sticker Stash (${savedEventIds.length} saved)`}
+            style={
+              {
+                '--slap-rot': '4deg',
+                '--slap-radius': '46% 54% 50% 50% / 52% 48% 52% 48%',
+              } as React.CSSProperties
+            }
+            className={`organic-slap-btn relative w-9 h-9 flex items-center justify-center border-2 cursor-pointer ${
+              savedEventIds.length > 0
+                ? 'bg-[#ff2a85] text-white border-[#f4f1ea]'
+                : 'bg-[#1d2128] hover:bg-[#282d37] text-[#f4f1ea] border-[#f4f1ea]/80'
+            }`}
+          >
+            <Bookmark aria-hidden="true" className="w-4 h-4" />
+            {savedEventIds.length > 0 && (
+              <span className="absolute -top-1 -right-1 px-1 rounded-full bg-[#ffe600] text-[#0d0e11] border border-[#0d0e11] font-mono-stamp text-[8px] font-bold leading-tight">
+                {savedEventIds.length}
+              </span>
+            )}
+          </button>
+
+          {/* 4. GPS Near Me Icon Button */}
+          <button
+            type="button"
+            onClick={handleNearMe}
+            aria-label="Center on my GPS location"
+            style={
+              {
+                '--slap-rot': '-4deg',
+                '--slap-radius': '52% 48% 46% 54% / 48% 52% 48% 52%',
+              } as React.CSSProperties
+            }
+            className={`organic-slap-btn w-9 h-9 flex items-center justify-center border-2 cursor-pointer ${
+              userLocation
+                ? 'bg-[#22c55e] text-[#0d0e11] border-[#0d0e11] outline-1 outline-[#f4f1ea]'
+                : 'bg-[#1d2128] hover:bg-[#282d37] text-[#22c55e] border-[#f4f1ea]/80'
+            }`}
+          >
+            <LocateFixed
+              aria-hidden="true"
+              className={`w-4 h-4 ${locating ? 'animate-spin' : ''}`}
+            />
+          </button>
+
+          {/* Expanded Secondary Tools (Surface Cycle, Share, Refresh) */}
+          {moreToolsOpen && (
+            <div className="flex flex-col items-center gap-2 pt-1 border-t border-white/15 animate-fade-in">
+              {viewMode === 'map' && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMapStyle((s) =>
+                      s === 'neon'
+                        ? 'midnight'
+                        : s === 'midnight'
+                          ? 'daylight'
+                          : 'neon'
+                    )
+                  }
+                  aria-label={`Switch map surface style (current: ${mapStyle})`}
+                  style={
+                    {
+                      '--slap-rot': '3deg',
+                      '--slap-radius': '8px 4px 9px 5px',
+                    } as React.CSSProperties
+                  }
+                  className="organic-slap-btn w-9 h-7 flex items-center justify-center bg-[#f4f1ea] text-[#0d0e11] border border-[#0d0e11] font-mono-stamp text-[8px] font-bold uppercase cursor-pointer"
+                >
+                  {mapStyle === 'daylight'
+                    ? 'LGT'
+                    : mapStyle === 'midnight'
+                      ? 'DRK'
+                      : 'STL'}
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await handleShareDeepLink();
+                  if (ok) {
+                    setShareBarCopied(true);
+                    setTimeout(() => setShareBarCopied(false), 2200);
+                  }
+                }}
+                aria-label="Share current view link"
+                style={
+                  {
+                    '--slap-rot': '-5deg',
+                    '--slap-radius': '50%',
+                  } as React.CSSProperties
+                }
+                className="organic-slap-btn w-8 h-8 flex items-center justify-center bg-[#1d2128] text-[#f4f1ea] border border-[#f4f1ea]/60 cursor-pointer"
+              >
+                {shareBarCopied ? (
+                  <Check aria-hidden="true" className="w-3.5 h-3.5 text-[#22c55e]" />
+                ) : (
+                  <Share2 aria-hidden="true" className="w-3.5 h-3.5" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => loadCity(activeCity, true)}
+                aria-label="Refresh city events"
+                style={
+                  {
+                    '--slap-rot': '4deg',
+                    '--slap-radius': '50%',
+                  } as React.CSSProperties
+                }
+                className="organic-slap-btn w-8 h-8 flex items-center justify-center bg-[#1d2128] text-[#d5d2c8] border border-[#f4f1ea]/60 cursor-pointer"
+              >
+                <RefreshCw
+                  aria-hidden="true"
+                  className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#ffe600]' : ''}`}
+                />
+              </button>
+            </div>
+          )}
+
+          {/* 5. Bottom Chevron Expand/Collapse Pill (Just like Snap Map's right rail chevron) */}
+          <button
+            type="button"
+            onClick={() => setMoreToolsOpen((v) => !v)}
+            aria-label={moreToolsOpen ? 'Hide extra tools' : 'More tools'}
+            aria-expanded={moreToolsOpen}
+            className="w-7 h-5 flex items-center justify-center text-[#d5d2c8] hover:text-white cursor-pointer"
+          >
+            {moreToolsOpen ? (
+              <ChevronUp aria-hidden="true" className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronDown aria-hidden="true" className="w-3.5 h-3.5" />
+            )}
+          </button>
         </div>
-        <div className="hidden sm:flex items-center gap-1.5 shrink-0">
-          <span>
-            Map:{' '}
-            <a
-              href="https://openfreemap.org"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[#d5d2c8] hover:underline"
-            >
-              OpenFreeMap
-            </a>{' '}
-            & © OpenStreetMap
-          </span>
-        </div>
+      </aside>
+
+      {/* BOTTOM-LEFT MICRO ATTRIBUTION WATERMARK (No bar background, < 0.3% area) */}
+      <footer className="pointer-events-auto fixed bottom-1.5 left-2.5 z-20 font-mono-stamp text-[9px] text-[#d5d2c8]/55 hover:text-[#f4f1ea] transition-colors flex items-center gap-1">
+        <a
+          href={CC_BY_4_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:underline"
+        >
+          6Aika CC BY 4.0
+        </a>
+        <span>•</span>
+        <a
+          href="https://openfreemap.org"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:underline"
+        >
+          OpenFreeMap
+        </a>
       </footer>
 
       {/* INTERACTIVE MONTH CALENDAR MODAL */}
@@ -1200,6 +1073,7 @@ export const App: React.FC = () => {
         initialEventId={deepLinkedEventId}
         savedEventIds={savedEventIds}
         onToggleSaveEvent={handleToggleSaveEvent}
+        onShowOnMap={handleShowEventOnMap}
         onClose={handleCloseModal}
         onActiveEventChange={handleActiveEventChange}
         onShareDeepLink={handleShareDeepLink}
@@ -1209,4 +1083,3 @@ export const App: React.FC = () => {
     </div>
   );
 };
-

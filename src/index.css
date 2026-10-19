@@ -184,17 +184,54 @@ dialog::backdrop {
 .tarra-sticker-card {
   background-color: #181b20;
   border: 2.5px solid #f4f1ea;
-  box-shadow:
-    4px 5px 0px #07080a,
-    0 10px 24px rgba(0, 0, 0, 0.55);
-  transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.16s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.16s ease;
+  filter: drop-shadow(3px 4px 0px #07080a);
+  transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), filter 0.16s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.16s ease;
 }
 
-.tarra-sticker-card:hover {
-  transform: translate(-1px, -2px);
-  box-shadow:
-    6px 7px 0px #07080a,
-    0 14px 28px rgba(0, 0, 0, 0.65);
+/* Organic, chaotic, hand-slapped sticker on the Pole Feed (uses CSS Custom Properties from JS) */
+.pole-sticker-slap {
+  transform: translateX(var(--slap-x, 0px)) rotate(var(--slap-rot, -1.5deg));
+  border-radius: var(--slap-radius, 10px 4px 12px 6px);
+  filter: drop-shadow(3px 4px 0px #07080a) drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), filter 0.18s ease, z-index 0s;
+}
+
+.pole-sticker-slap:hover,
+.pole-sticker-slap:focus-visible {
+  z-index: 25;
+  transform: translateX(var(--slap-x, 0px)) rotate(0deg) scale(1.025);
+  filter: drop-shadow(5px 6px 0px #07080a) drop-shadow(0 14px 24px rgba(0, 0, 0, 0.65));
+}
+
+/* Artsy, asymmetric hand-cut interactive button / tag */
+.organic-slap-btn {
+  transform: rotate(var(--slap-rot, -2deg));
+  border-radius: var(--slap-radius, 52% 48% 45% 55% / 47% 53% 47% 53%);
+  filter: drop-shadow(2px 2.5px 0px #07080a);
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), filter 0.15s ease;
+}
+
+.organic-slap-btn:hover {
+  transform: rotate(calc(var(--slap-rot, -2deg) * -0.4)) scale(1.08);
+  filter: drop-shadow(3px 4px 0px #07080a);
+}
+
+.organic-slap-btn:active {
+  transform: rotate(0deg) scale(0.96);
+}
+
+/* Compact organic map marker sticker */
+.map-mini-slap {
+  transform: rotate(var(--slap-rot, -6deg));
+  border-radius: var(--slap-radius, 8px 3px 9px 4px);
+  filter: drop-shadow(2px 2.5px 0px #07080a);
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), filter 0.15s ease;
+}
+
+.map-mini-slap:hover,
+.map-mini-slap.is-selected {
+  transform: rotate(0deg) scale(1.22);
+  filter: drop-shadow(3px 4px 0px #07080a);
 }
 
 /* Paper/postal white die-cut sticker variant */
@@ -203,7 +240,7 @@ dialog::backdrop {
   color: #111317;
   border: 2.5px solid #111317;
   outline: 2px solid #f6f3ec;
-  box-shadow: 4px 5px 0px #07080a;
+  filter: drop-shadow(3px 4px 0px #07080a);
 }
 
 /* Hazard yellow street sign slap (inspired by TEVA / CB1 stickers) */
@@ -211,7 +248,7 @@ dialog::backdrop {
   background-color: #ffe600;
   color: #0d0e11;
   border: 2px solid #0d0e11;
-  box-shadow: 3px 3px 0px #07080a;
+  filter: drop-shadow(2.5px 3px 0px #07080a);
 }
 
 /* Diagonal hazard stripe pattern using Modern Web Guidance single-stop gradient syntax */
@@ -247,7 +284,7 @@ dialog::backdrop {
    Applied strictly to off-screen event cards (index >= 8) in the Pole Feed View */
 .event-card-deferred {
   content-visibility: auto;
-  contain-intrinsic-size: auto none auto 230px;
+  contain-intrinsic-size: auto none auto 150px;
 }
 
 @keyframes fadeIn {

@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Info,
   MapPin,
+  Map as MapIcon,
   Navigation,
   Pause,
   Play,
@@ -79,6 +80,7 @@ interface StoryPlayerModalProps {
   initialEventId?: string | null;
   savedEventIds: string[];
   onToggleSaveEvent: (eventId: string) => void;
+  onShowOnMap?: (event: NormalizedEvent) => void;
   onClose: () => void;
   onActiveEventChange: (eventId: string) => void;
   onShareDeepLink: (event: NormalizedEvent) => Promise<boolean>;
@@ -93,6 +95,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   initialEventId,
   savedEventIds,
   onToggleSaveEvent,
+  onShowOnMap,
   onClose,
   onActiveEventChange,
   onShareDeepLink,
@@ -536,38 +539,77 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
             </p>
           </div>
 
-          {/* Primary Action Bar */}
-          <div className="grid grid-cols-12 gap-2 pt-0.5">
+          {/* Primary Organic Slap Action Bar */}
+          <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
             <button
               type="button"
               onClick={() => setDrawerOpen(true)}
-              className="col-span-5 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#f4f1ea] hover:bg-white text-[#0d0e11] border-2 border-[#0d0e11] shadow-[3px_3px_0px_#07080a] font-grotesk font-extrabold text-xs uppercase tracking-tight transition-colors cursor-pointer"
+              style={
+                {
+                  '--slap-rot': '-1.6deg',
+                  '--slap-radius': '10px 4px 12px 5px',
+                } as React.CSSProperties
+              }
+              className="organic-slap-btn flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#f4f1ea] hover:bg-white text-[#0d0e11] border-2 border-[#0d0e11] font-grotesk font-extrabold text-xs uppercase tracking-tight cursor-pointer"
             >
-              <Info className="w-4 h-4" />
-              <span>Full Flyer</span>
+              <Info aria-hidden="true" className="w-3.5 h-3.5" />
+              <span>Details</span>
             </button>
+
+            {onShowOnMap && (
+              <button
+                type="button"
+                onClick={() => {
+                  onShowOnMap(currentEvent);
+                  if (dialogRef.current) {
+                    void closeTopLayer(dialogRef.current);
+                  }
+                }}
+                style={
+                  {
+                    '--slap-rot': '1.8deg',
+                    '--slap-radius': '5px 12px 4px 10px',
+                  } as React.CSSProperties
+                }
+                className="organic-slap-btn flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#ff2a85] hover:bg-[#ff4796] text-white border-2 border-[#f4f1ea] font-grotesk font-extrabold text-xs uppercase tracking-tight cursor-pointer"
+              >
+                <MapIcon aria-hidden="true" className="w-3.5 h-3.5" />
+                <span>On Map</span>
+              </button>
+            )}
 
             <a
               href={currentEvent.reittiopasUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="col-span-5 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#ffe600] hover:bg-[#fff04d] text-[#0d0e11] border-2 border-[#0d0e11] shadow-[3px_3px_0px_#07080a] font-grotesk font-extrabold text-xs uppercase tracking-tight transition-all"
+              style={
+                {
+                  '--slap-rot': '-1.2deg',
+                  '--slap-radius': '11px 5px 9px 4px',
+                } as React.CSSProperties
+              }
+              className="organic-slap-btn flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#ffe600] hover:bg-[#fff04d] text-[#0d0e11] border-2 border-[#0d0e11] font-grotesk font-extrabold text-xs uppercase tracking-tight"
             >
-              <Navigation className="w-4 h-4" />
-              <span>Reittiopas</span>
+              <Navigation aria-hidden="true" className="w-3.5 h-3.5" />
+              <span>Route</span>
             </a>
 
             <button
               type="button"
               onClick={handleShareClick}
               aria-label="Copy deep link to this event"
-              title="Copy shareable URL (?city=...&event=...)"
-              className="col-span-2 inline-flex items-center justify-center rounded-lg bg-[#22262e] hover:bg-[#2e333d] border-2 border-[#f4f1ea] shadow-[3px_3px_0px_#07080a] text-[#f4f1ea] transition-colors cursor-pointer"
+              style={
+                {
+                  '--slap-rot': '2.5deg',
+                  '--slap-radius': '50%',
+                } as React.CSSProperties
+              }
+              className="organic-slap-btn w-9 h-9 shrink-0 inline-flex items-center justify-center bg-[#22262e] hover:bg-[#2e333d] border-2 border-[#f4f1ea] text-[#f4f1ea] cursor-pointer"
             >
               {copiedToast ? (
-                <Check className="w-4 h-4 text-[#22c55e]" />
+                <Check aria-hidden="true" className="w-4 h-4 text-[#22c55e]" />
               ) : (
-                <Share2 className="w-4 h-4" />
+                <Share2 aria-hidden="true" className="w-4 h-4" />
               )}
             </button>
           </div>

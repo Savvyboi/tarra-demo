@@ -1,5 +1,5 @@
 import { registerHooks } from 'node:module';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import test from 'node:test';
@@ -26,7 +26,10 @@ registerHooks({
 const calendarUtils = await import('../src/utils/calendarUtils.ts');
 const linkedEventsClient = await import('../src/services/linkedEventsClient.ts');
 const licenseGuard = await import('../src/utils/licenseGuard.ts');
-const { CITIES } = await import('../src/config/cities.ts');
+const { CITIES, CITY_LIST, SOURCE_REGISTRY } = await import(
+  '../src/config/cities.ts'
+);
+const syncFeeds = await import('../scripts/sync-feeds.mjs');
 
 const {
   isValidDateKey,
@@ -46,9 +49,18 @@ const {
   classifyTopic,
   classifyTopics,
   groupEventsByVenue,
+  validateAndNormalizeFinlandCoordinates,
+  upgradeKnownLinkedEventsUrl,
 } = linkedEventsClient;
 
-const { buildLicenseAttribution } = licenseGuard;
+const { buildLicenseAttribution, getCitySourceAttribution } = licenseGuard;
+const {
+  classifyKeskiSuomiEventCity,
+  classifySatakuntaEventCity,
+  classifyEpEventCity,
+  convertHelloKuopioEventToLinkedEvent,
+  convertSaloPostToLinkedEvent,
+} = syncFeeds;
 
 test('Check 01 (Finding 03): Multi-day exhibition and overnight event match all overlapped calendar dates', () => {
   const exhibition = normalizeLinkedEvent(
@@ -379,4 +391,425 @@ test('Check 11 (Finding 23): Date validation rejects impossible dates and protot
   assert.equal(Object.hasOwn(CITIES, 'turku'), true);
   assert.equal(Object.hasOwn(CITIES, 'toString'), false);
   assert.equal(Object.hasOwn(CITIES, 'constructor'), false);
+});
+
+test('Check 12: Source registry and all 28 cities have valid metadata and source attribution', () => {
+  assert.equal(CITY_LIST.length, 28);
+  assert.equal(Object.keys(CITIES).length, 28);
+
+  const expectedNewCities = [
+    'jyvaskyla',
+    'jamsa',
+    'aanekoski',
+    'keuruu',
+    'saarijarvi',
+    'viitasaari',
+    'pori',
+    'rauma',
+    'ulvila',
+    'harjavalta',
+    'huittinen',
+    'kokemaki',
+    'kankaanpaa',
+    'seinajoki',
+    'lapua',
+    'kauhava',
+    'kauhajoki',
+    'kurikka',
+    'alavus',
+    'ahtari',
+    'kuopio',
+    'salo',
+  ];
+  for (const id of expectedNewCities) {
+    assert.ok(CITIES[id], `Missing city config for ${id}`);
+    assert.ok(
+      SOURCE_REGISTRY[CITIES[id].sourceId],
+      `Missing source registry entry for ${id}`
+    );
+    const attr = getCitySourceAttribution(id);
+    assert.ok(attr.text.length > 10, `Missing attribution text for ${id}`);
+    assert.match(attr.url, /^https:\/\//);
+  }
+});
+
+test('Check 13 (Keski-Suomi Events): Resolves area directory, handles blank location.id, LocalizedString alt_text, and location_extra_info', () => {
+  const placeMap = new Map([
+    [
+      'https://keskisuomievents.fi/api/v1/place/jkl-uuid',
+      { id: 'jkl-uuid', name: { fi: 'Jyväskylä' } },
+    ],
+    [
+      'https://keskisuomievents.fi/api/v1/place/laukaa-uuid',
+      { id: 'laukaa-uuid', name: { fi: 'Laukaa' } },
+    ],
+  ]);
+
+  assert.equal(
+    classifyKeskiSuomiEventCity(
+      {
+        area: { '@id': 'https://keskisuomievents.fi/api/v1/place/jkl-uuid' },
+        location: { id: '', address_locality: null },
+      },
+      placeMap
+    ),
+    'jyvaskyla'
+  );
+
+  // Explicit non-target municipality (Laukaa) is not misassigned
+  assert.equal(
+    classifyKeskiSuomiEventCity(
+      {
+        area: { '@id': 'https://keskisuomievents.fi/api/v1/place/laukaa-uuid' },
+      },
+      placeMap
+    ),
+    null
+  );
+
+  const normalized = normalizeLinkedEvent(
+    {
+      id: 'ks:sauna-1',
+      name: { fi: 'Saunalautta' },
+      start_time: '2026-10-28T15:00:00Z',
+      location: {
+        id: '',
+        name: { fi: 'Jyväskylä' },
+        street_address: { fi: 'Satamakatu 8, Jyväskylä' },
+        position: { type: 'Point', coordinates: [25.7577, 62.2363] },
+      },
+      location_extra_info: { fi: 'Jyväskylän Satama' },
+      provider_name: 'SK ELÄMYKSET OY',
+      external_links: [{ name: 'website', link: 'https://elamykset.net/' }],
+      images: [
+        {
+          id: 'img-ks',
+          url: 'https://keskisuomievents.fi/api/assets/123?key=public',
+          alt_text: { fi: 'Saunakuva', en: 'Sauna photo' },
+          photographer_name: 'SK',
+          license: 'event_only',
+        },
+      ],
+    },
+    'jyvaskyla'
+  );
+  assert.ok(normalized);
+  assert.equal(normalized.venueName, 'Jyväskylän Satama');
+  assert.equal(normalized.imageAlt, 'Sauna photo');
+  assert.equal(normalized.infoUrl, 'https://elamykset.net/');
+  assert.match(normalized.attribution.badgeText, /SK ELÄMYKSET OY/);
+});
+
+test('Check 14 (Satakunta Events): Resolves se:* municipality and Pori district references and Honkajoki->Kankaanpää merger', () => {
+  const placeMap = new Map([
+    [
+      'https://satakuntaevents.fi/api/v2/place/se:18',
+      {
+        id: 'se:18',
+        name: { fi: 'Keskusta' },
+        address_locality: { fi: 'Pori' },
+      },
+    ],
+    [
+      'https://satakuntaevents.fi/api/v2/place/se:4',
+      {
+        id: 'se:4',
+        name: { fi: 'Honkajoki' },
+        address_locality: { fi: 'Honkajoki' },
+      },
+    ],
+    [
+      'https://satakuntaevents.fi/api/v2/place/se:16',
+      {
+        id: 'se:16',
+        name: { fi: 'Säkylä' },
+        address_locality: { fi: 'Säkylä' },
+      },
+    ],
+  ]);
+
+  assert.equal(
+    classifySatakuntaEventCity(
+      { area: { '@id': 'https://satakuntaevents.fi/api/v2/place/se:18/' } },
+      placeMap
+    ),
+    'pori'
+  );
+  assert.equal(
+    classifySatakuntaEventCity(
+      { area: { '@id': 'https://satakuntaevents.fi/api/v2/place/se:4/' } },
+      placeMap
+    ),
+    'kankaanpaa'
+  );
+  assert.equal(
+    classifySatakuntaEventCity(
+      { area: { '@id': 'https://satakuntaevents.fi/api/v2/place/se:16/' } },
+      placeMap
+    ),
+    null
+  );
+});
+
+test('Check 15 (EP Kalenteri): Upgrades HTTP URLs, corrects swapped [lat, lon] coordinates, maps historic localities, and strips OIDC publisher IDs', () => {
+  assert.equal(
+    upgradeKnownLinkedEventsUrl(
+      'http://epkalenteri.linkedevents.fi/v1/event/?page=2'
+    ),
+    'https://epkalenteri.linkedevents.fi/v1/event/?page=2'
+  );
+  assert.equal(
+    upgradeKnownLinkedEventsUrl('http://evil.example.com/v1/event/?page=2'),
+    null
+  );
+
+  // Swapped Seinäjoki [lat, lon] observed in live research
+  const swappedCheck = validateAndNormalizeFinlandCoordinates([
+    62.8291053, 22.9096926,
+  ]);
+  assert.equal(swappedCheck.swapped, true);
+  assert.deepEqual(swappedCheck.coordinates, [22.9096926, 62.8291053]);
+
+  // Rejects Null Island / out-of-Finland coordinates
+  const invalidCheck = validateAndNormalizeFinlandCoordinates([0, 0]);
+  assert.equal(invalidCheck.coordinates, null);
+
+  // Historic Nurmo -> Seinäjoki, Jalasjärvi -> Kurikka
+  assert.equal(
+    classifyEpEventCity({
+      location: { address_locality: { fi: 'Nurmo' } },
+    }),
+    'seinajoki'
+  );
+  assert.equal(
+    classifyEpEventCity({
+      location: { address_locality: { fi: 'Jalasjärvi' } },
+    }),
+    'kurikka'
+  );
+
+  // OIDC publisher strings never leak into attribution
+  const epEv = normalizeLinkedEvent(
+    {
+      id: 'ep:1',
+      name: { fi: '&lt;b&gt;Kirjastoilta&lt;/b&gt;' },
+      description: { fi: '&lt;h2&gt;Tervetuloa&lt;/h2&gt;' },
+      start_time: '2026-11-19T15:30:00Z',
+      publisher: 'eptapahtumat:oidc:user:f62f0239-5f72-4bb3-a3c8-9ff6af144c41',
+      location: {
+        id: 'ep:nurmo',
+        name: { fi: 'Nurmon kirjasto' },
+        position: { type: 'Point', coordinates: [62.8291053, 22.9096926] },
+      },
+    },
+    'seinajoki'
+  );
+  assert.ok(epEv);
+  assert.deepEqual(epEv.coordinates, [22.9096926, 62.8291053]);
+  assert.doesNotMatch(epEv.attribution.badgeText, /oidc:user/);
+  assert.match(epEv.descriptionHtml, /<h2>Tervetuloa<\/h2>/);
+});
+
+test('Check 16 (Hello Kuopio & Salon Tapahtumat): Filters out external municipalities and formats compound Salo IDs', () => {
+  const tahkoConverted = convertHelloKuopioEventToLinkedEvent({
+    id: 10028333,
+    title: 'Muksuaamu &#8211; Tahko',
+    description: '<p>Perheaamu</p>',
+    utc_start_date: '2026-10-28 07:00:00',
+    utc_end_date: '2026-10-28 10:00:00',
+    cost: '19€',
+    url: 'https://www.hellokuopio.fi/tapahtuma/muksuaamu/',
+    venue: {
+      id: 52283,
+      venue: 'SuperPark Tahko',
+      address: 'Keitaankatu 1',
+      city: 'Tahkovuori',
+      geo_lat: 63.29099,
+      geo_lng: 28.04208,
+    },
+  });
+  assert.ok(tahkoConverted);
+  assert.equal(tahkoConverted.id, 'kuopio:10028333');
+  assert.equal(tahkoConverted.name.fi, 'Muksuaamu – Tahko');
+  assert.equal(tahkoConverted.location.address_locality.fi, 'Tahkovuori, Kuopio');
+  assert.equal(tahkoConverted.offers[0].is_free, false);
+
+  // Outside municipality (Tuusniemi) is excluded from Kuopio feed
+  const tuusniemiConverted = convertHelloKuopioEventToLinkedEvent({
+    id: 999,
+    title: 'Tuusniemi Tapahtuma',
+    utc_start_date: '2026-10-28 10:00:00',
+    venue: { city: 'Tuusniemi', venue: 'Kunnantalo' },
+  });
+  assert.equal(tuusniemiConverted, null);
+
+  // Salo compound ID + Somero exclusion
+  const refNow = new Date('2026-10-20T00:00:00Z');
+  const someroPost = convertSaloPostToLinkedEvent(
+    {
+      id: 64842,
+      blogId: '3',
+      title: 'RekryNurkka Someron toimipisteellä',
+      locationText: 'Salon työllisyysalue, Someron palvelupiste',
+      startDate: 1793000000,
+      endDate: 1793007200,
+      gps_lat: 60.6275,
+      gps_lng: 23.5162,
+    },
+    refNow
+  );
+  assert.equal(someroPost, null);
+
+  const saloPost = convertSaloPostToLinkedEvent(
+    {
+      id: 74921,
+      blogId: '3',
+      title: 'Salo Jazz Ilta',
+      locationText: 'Kulttuuritalo Kiva, Horninkatu 21, Salo',
+      permalink: 'https://tapahtumat.salo.fi/salo-jazz/',
+      startDate: 1793000000,
+      endDate: 1793007200,
+      gps_lat: 60.385,
+      gps_lng: 23.1309,
+      classes: [
+        { name: 'Ilmainen', slug: 'ilmainen' },
+        { name: 'Maksullisuus', slug: 'maksullisuus' },
+      ],
+    },
+    refNow
+  );
+  assert.ok(saloPost);
+  assert.equal(saloPost.id, 'salo:3:74921');
+  assert.equal(saloPost.offers[0].is_free, true);
+});
+
+test('Check 17: Cancelled, deleted, and all-day events are handled accurately', () => {
+  const deleted = normalizeLinkedEvent(
+    {
+      id: 'ks:del',
+      name: { fi: 'Deleted Event' },
+      start_time: '2026-10-29T12:00:00Z',
+      deleted: true,
+    },
+    'jyvaskyla'
+  );
+  assert.equal(deleted, null);
+
+  const cancelled = normalizeLinkedEvent(
+    {
+      id: 'ks:canc',
+      name: { fi: 'Syyskonsertti' },
+      start_time: '2026-10-29T18:00:00Z',
+      event_status: 'EventCancelled',
+    },
+    'jyvaskyla'
+  );
+  assert.ok(cancelled);
+  assert.equal(cancelled.title, '[Cancelled] Syyskonsertti');
+
+  const allDay = normalizeLinkedEvent(
+    {
+      id: 'kuopio:allday',
+      name: { fi: 'Koko päivän markkinat' },
+      start_time: '2026-11-05',
+      end_time: '2026-11-05',
+      all_day: true,
+    },
+    'kuopio'
+  );
+  assert.ok(allDay);
+  assert.equal(doesEventOccurOnDate(allDay, '2026-11-05'), true);
+  assert.ok(
+    allDay.endTime.getTime() - allDay.startTime.getTime() >= 23 * 3600 * 1000
+  );
+});
+
+test('Check 18 (End-to-End 28-City Feed Integrity): Every synced static feed normalizes, consolidates, and passes coordinate + attribution invariants', () => {
+  const feedsDir = fileURLToPath(new URL('../public/feeds', import.meta.url));
+  let totalNormalizedEvents = 0;
+
+  for (const city of CITY_LIST) {
+    const feedPath = path.join(feedsDir, `${city.id}.json`);
+    assert.ok(
+      existsSync(feedPath),
+      `Missing static feed file for ${city.id}: ${feedPath}`
+    );
+
+    const payload = JSON.parse(readFileSync(feedPath, 'utf-8'));
+    assert.ok(
+      payload && typeof payload === 'object' && Array.isArray(payload.data),
+      `Invalid feed payload structure for ${city.id}`
+    );
+    assert.equal(
+      typeof payload.meta?.count,
+      'number',
+      `Missing numeric meta.count for ${city.id}`
+    );
+
+    const normalized = [];
+    for (const raw of payload.data) {
+      const ev = normalizeLinkedEvent(raw, city.id);
+      if (!ev) continue;
+
+      assert.ok(ev.id.length > 0, `Empty event id in ${city.id}`);
+      assert.ok(ev.title.length > 0, `Empty event title in ${city.id} (${ev.id})`);
+      assert.ok(
+        !Number.isNaN(ev.startTime.getTime()) &&
+          !Number.isNaN(ev.endTime.getTime()) &&
+          ev.endTime.getTime() >= ev.startTime.getTime(),
+        `Invalid timestamp range in ${city.id} (${ev.id})`
+      );
+
+      if (ev.coordinates !== null) {
+        const [lon, lat] = ev.coordinates;
+        assert.ok(
+          lon >= 18.0 && lon <= 32.5 && lat >= 59.0 && lat <= 70.5,
+          `Out-of-Finland or swapped coordinates [${lon}, ${lat}] in ${city.id} (${ev.id})`
+        );
+      }
+
+      assert.ok(
+        ev.attribution.badgeText.length > 0 &&
+          !ev.attribution.badgeText.includes('oidc:user') &&
+          !ev.attribution.badgeText.includes('se:places'),
+        `Invalid or leaked internal attribution badge in ${city.id} (${ev.id}): ${ev.attribution.badgeText}`
+      );
+      assert.match(ev.attribution.apiLicenseUrl, /^https:\/\//);
+
+      if (ev.infoUrl) {
+        assert.doesNotMatch(
+          ev.infoUrl,
+          /^http:\/\/epkalenteri\.linkedevents\.fi/i,
+          `Un-upgraded HTTP EP Kalenteri infoUrl in ${city.id} (${ev.id})`
+        );
+      }
+      if (ev.imageUrl) {
+        assert.doesNotMatch(
+          ev.imageUrl,
+          /^http:\/\/epkalenteri\.linkedevents\.fi/i,
+          `Un-upgraded HTTP EP Kalenteri imageUrl in ${city.id} (${ev.id})`
+        );
+      }
+
+      normalized.push(ev);
+    }
+
+    const consolidated = consolidateRecurringEvents(normalized);
+    const venueGroups = groupEventsByVenue(consolidated);
+    assert.ok(
+      consolidated.length <= normalized.length,
+      `Consolidation grew event list in ${city.id}`
+    );
+    assert.ok(
+      Array.isArray(venueGroups),
+      `groupEventsByVenue failed in ${city.id}`
+    );
+
+    totalNormalizedEvents += normalized.length;
+  }
+
+  assert.ok(
+    totalNormalizedEvents > 2000,
+    `Expected >2000 normalized events across 28 cities, got ${totalNormalizedEvents}`
+  );
 });

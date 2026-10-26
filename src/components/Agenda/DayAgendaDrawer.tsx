@@ -218,7 +218,7 @@ export const DayAgendaDrawer: React.FC<DayAgendaDrawerProps> = ({
               </p>
               <p className="text-xs text-[#b8b4a8]">
                 {activeTab === 'saved'
-                  ? 'Tap the bookmark icon on any event sticker or flyer to build your personal 6-city lineup.'
+                  ? 'Tap the bookmark icon on any event sticker or flyer to build your personal multi-city lineup.'
                   : 'Pick another date on the calendar or clear your active filters.'}
               </p>
             </div>

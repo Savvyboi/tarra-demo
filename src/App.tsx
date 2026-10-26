@@ -23,7 +23,12 @@ import {
   SlidersHorizontal,
   AlertTriangle,
 } from 'lucide-react';
-import { CITIES, CITY_LIST, TOPICS } from './config/cities';
+import {
+  CITIES,
+  CITY_LIST,
+  CITY_REGION_GROUPS,
+  TOPICS,
+} from './config/cities';
 import {
   CityId,
   ListSortMode,
@@ -47,10 +52,7 @@ import {
   resolveEventForDate,
 } from './utils/calendarUtils';
 import { calculateDistanceKm } from './utils/distanceUtils';
-import {
-  CC_BY_4_URL,
-  getCitySourceAttribution,
-} from './utils/licenseGuard';
+import { getCitySourceAttribution } from './utils/licenseGuard';
 import { StoryPlayerModal } from './components/Story/StoryPlayerModal';
 import { EventCalendarModal } from './components/Calendar/EventCalendarModal';
 import { DayAgendaDrawer } from './components/Agenda/DayAgendaDrawer';
@@ -340,6 +342,7 @@ export const App: React.FC = () => {
   const [searchOpen, setSearchOpen] = useState(() => Boolean(initial.q));
   const [filterTrayOpen, setFilterTrayOpen] = useState(false);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
+  const [cityFilterQuery, setCityFilterQuery] = useState('');
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);
 
   const [calendarModalOpen, setCalendarModalOpen] = useState(false);
@@ -430,7 +433,19 @@ export const App: React.FC = () => {
 
     (async () => {
       const found: Record<string, NormalizedEvent> = {};
-      for (const city of CITY_LIST) {
+      const hintedCityIds = new Set<CityId>();
+      for (const id of unresolvedSavedIds) {
+        const prefix = id.split(':')[0]?.trim().toLowerCase();
+        if (prefix && Object.hasOwn(CITIES, prefix)) {
+          hintedCityIds.add(prefix as CityId);
+        }
+      }
+      const orderedCities = [
+        ...CITY_LIST.filter((c) => hintedCityIds.has(c.id)),
+        ...CITY_LIST.filter((c) => !hintedCityIds.has(c.id)),
+      ];
+
+      for (const city of orderedCities) {
         if (cancelled) break;
         try {
           const res = await fetchCityEvents(city.id, false, null);
@@ -802,6 +817,7 @@ export const App: React.FC = () => {
     setHighlightedVenueId(null);
     setActiveCity(cityId);
     setCityPickerOpen(false);
+    setCityFilterQuery('');
   };
 
   const handleSelectDate = useCallback((dateKey: string | null) => {
@@ -1406,37 +1422,96 @@ export const App: React.FC = () => {
           <ChevronDown aria-hidden="true" className="w-3.5 h-3.5 opacity-80" />
         </button>
 
-        {/* Floating Chaotic 6-City Slap Picker */}
+        {/* Floating Grouped & Searchable 28-City Slap Picker */}
         {cityPickerOpen && (
           <nav
-            aria-label="6-City Switcher"
-            className="pointer-events-auto mt-2 p-2 rounded-[12px_5px_14px_6px] bg-[#14171c]/95 border-2 border-[#f4f1ea] shadow-[4px_5px_0px_#07080a] flex flex-wrap justify-center gap-1.5 max-w-[260px] animate-fade-in rotate-1"
+            aria-label="City Switcher"
+            className="pointer-events-auto mt-2 p-2.5 rounded-[12px_5px_14px_6px] bg-[#14171c]/95 border-2 border-[#f4f1ea] shadow-[4px_5px_0px_#07080a] w-[min(92vw,350px)] max-h-[72dvh] flex flex-col gap-2.5 animate-fade-in rotate-[0.5deg]"
           >
-            {CITY_LIST.map((c, idx) => {
-              const isSelected = c.id === activeCity;
-              const angle = idx % 2 === 0 ? '-3deg' : '2.8deg';
-              return (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#0d0e11] border border-[#f4f1ea]/40">
+              <Search
+                aria-hidden="true"
+                className="w-3.5 h-3.5 text-[#ffe600] shrink-0"
+              />
+              <input
+                type="search"
+                value={cityFilterQuery}
+                onChange={(e) => setCityFilterQuery(e.target.value)}
+                placeholder={`Filter ${CITY_LIST.length} cities...`}
+                aria-label="Filter cities"
+                className="w-full bg-transparent font-mono-stamp text-xs text-[#f4f1ea] placeholder:text-[#8a867a] focus:outline-none"
+              />
+              {cityFilterQuery && (
                 <button
-                  key={c.id}
                   type="button"
-                  aria-pressed={isSelected}
-                  onClick={() => handleCitySelect(c.id)}
-                  style={
-                    {
-                      '--slap-rot': angle,
-                      '--slap-radius': '10px 4px 11px 5px',
-                    } as React.CSSProperties
-                  }
-                  className={`organic-slap-btn px-2.5 py-1 font-display-slap text-xs uppercase tracking-tight cursor-pointer border-2 ${
-                    isSelected
-                      ? `${c.badgeColor} border-[#0d0e11] outline-1 outline-[#f4f1ea]`
-                      : 'bg-[#1d2128] text-[#f4f1ea] border-white/25 hover:border-white'
-                  }`}
+                  onClick={() => setCityFilterQuery('')}
+                  aria-label="Clear city filter"
+                  className="text-[#ff2a85] hover:text-white cursor-pointer"
                 >
-                  {c.name}
+                  <X aria-hidden="true" className="w-3 h-3" />
                 </button>
-              );
-            })}
+              )}
+            </div>
+
+            <div className="overflow-y-auto pr-1 space-y-2.5">
+              {(() => {
+                const normCityQuery = normalizeSearchToken(cityFilterQuery);
+                const matchingGroups = CITY_REGION_GROUPS.map((group) => ({
+                  ...group,
+                  cities: CITY_LIST.filter(
+                    (c) =>
+                      c.regionGroup === group.id &&
+                      (!normCityQuery ||
+                        normalizeSearchToken(
+                          `${c.name} ${c.nativeName} ${c.regionLabel} ${group.label}`
+                        ).includes(normCityQuery))
+                  ),
+                })).filter((g) => g.cities.length > 0);
+
+                if (matchingGroups.length === 0) {
+                  return (
+                    <p className="py-3 text-center font-mono-stamp text-xs text-[#b8b4a8]">
+                      No matching cities found.
+                    </p>
+                  );
+                }
+
+                return matchingGroups.map((group) => (
+                  <div key={group.id} className="space-y-1.5">
+                    <div className="font-mono-stamp text-[9px] font-bold uppercase tracking-wider text-[#b8b4a8] px-1">
+                      {group.label}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {group.cities.map((c, idx) => {
+                        const isSelected = c.id === activeCity;
+                        const angle = idx % 2 === 0 ? '-2.2deg' : '2.1deg';
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            aria-pressed={isSelected}
+                            onClick={() => handleCitySelect(c.id)}
+                            style={
+                              {
+                                '--slap-rot': angle,
+                                '--slap-radius': '10px 4px 11px 5px',
+                              } as React.CSSProperties
+                            }
+                            className={`organic-slap-btn px-2.5 py-1 font-display-slap text-xs uppercase tracking-tight cursor-pointer border-2 ${
+                              isSelected
+                                ? `${c.badgeColor} border-[#0d0e11] outline-1 outline-[#f4f1ea]`
+                                : 'bg-[#1d2128] text-[#f4f1ea] border-white/25 hover:border-white'
+                            }`}
+                          >
+                            {c.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
           </nav>
         )}
       </div>
@@ -1650,7 +1725,7 @@ export const App: React.FC = () => {
       {/* BOTTOM-LEFT MICRO ATTRIBUTION WATERMARK */}
       <footer className="pointer-events-auto fixed bottom-1.5 left-2.5 z-20 font-mono-stamp text-[9px] text-[#d5d2c8]/55 hover:text-[#f4f1ea] transition-colors flex items-center gap-1">
         <a
-          href={CC_BY_4_URL}
+          href={citySourceAttribution.url}
           target="_blank"
           rel="noopener noreferrer"
           className="hover:underline"

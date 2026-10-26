@@ -362,6 +362,102 @@ export function evaluateEventPrice(raw: RawLinkedEvent): {
   };
 }
 
+const KNOWN_LINKED_EVENTS_HOSTS = new Set([
+  'epkalenteri.linkedevents.fi',
+  'keskisuomievents.fi',
+  'satakuntaevents.fi',
+  'api.hel.fi',
+]);
+
+/**
+ * Upgrades HTTP pagination or resource URLs to HTTPS for known Linked Events hosts
+ * and verifies the host before following (EP Kalenteri implementation requirement).
+ */
+export function upgradeKnownLinkedEventsUrl(
+  rawUrl: string | null | undefined
+): string | null {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  try {
+    const parsed = new URL(rawUrl.trim());
+    if (!KNOWN_LINKED_EVENTS_HOSTS.has(parsed.hostname)) {
+      return null;
+    }
+    if (parsed.protocol === 'http:') {
+      parsed.protocol = 'https:';
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Decodes common HTML entities in event titles and double-encoded descriptions
+ * (e.g., EP Kalenteri `&lt;h2&gt;`, WordPress `&#8211;`).
+ */
+export function decodeHtmlEntities(input: string): string {
+  if (!input || !input.includes('&')) return input;
+  return input
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&apos;/gi, "'")
+    .replace(/&#8211;|&ndash;/gi, '–')
+    .replace(/&#8212;|&mdash;/gi, '—')
+    .replace(/&#8216;|&lsquo;/gi, '‘')
+    .replace(/&#8217;|&rsquo;/gi, '’')
+    .replace(/&#8220;|&ldquo;/gi, '“')
+    .replace(/&#8221;|&rdquo;/gi, '”')
+    .replace(/&#(\d+);/g, (_, dec) => {
+      const code = Number(dec);
+      return Number.isFinite(code) && code > 0 ? String.fromCodePoint(code) : _;
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => {
+      const code = Number.parseInt(hex, 16);
+      return Number.isFinite(code) && code > 0 ? String.fromCodePoint(code) : _;
+    });
+}
+
+/**
+ * Validates venue coordinates against Finland's geographic bounding box
+ * (lon 18.0..32.5, lat 59.0..70.5) and corrects swapped [lat, lon] pairs
+ * observed in upstream feeds such as EP Kalenteri.
+ */
+export function validateAndNormalizeFinlandCoordinates(
+  rawCoords: unknown
+): {
+  coordinates: [number, number] | null;
+  swapped: boolean;
+} {
+  if (
+    !Array.isArray(rawCoords) ||
+    rawCoords.length !== 2 ||
+    typeof rawCoords[0] !== 'number' ||
+    typeof rawCoords[1] !== 'number' ||
+    !Number.isFinite(rawCoords[0]) ||
+    !Number.isFinite(rawCoords[1])
+  ) {
+    return { coordinates: null, swapped: false };
+  }
+
+  const [first, second] = rawCoords;
+  const isNormalFinland =
+    first >= 18.0 && first <= 32.5 && second >= 59.0 && second <= 70.5;
+  if (isNormalFinland) {
+    return { coordinates: [first, second], swapped: false };
+  }
+
+  const isSwappedFinland =
+    first >= 59.0 && first <= 70.5 && second >= 18.0 && second <= 32.5;
+  if (isSwappedFinland) {
+    return { coordinates: [second, first], swapped: true };
+  }
+
+  return { coordinates: null, swapped: false };
+}
+
 /**
  * Extracts real venue coordinates when provided by the source and rejects missing or
  * synthetically offset city-center coordinates (Finding 07).
@@ -381,23 +477,22 @@ function extractGenuineCoordinates(
   const locId = raw.location?.id || '';
 
   const isOnline =
+    Boolean(raw.is_virtualevent) ||
+    Boolean(raw.virtualevent_url) ||
     locId.includes('internet') ||
     locId.includes('virtual') ||
     /\b(verkossa|verkkotapahtuma|online|etänä|etätapahtuma|webinaari|webinar|livestream|stream|teams|zoom)\b/i.test(
       `${rawLocName} ${rawStreet} ${rawExtra} ${title}`
     );
 
-  const coords = raw.location?.position?.coordinates;
-  if (
-    !Array.isArray(coords) ||
-    coords.length !== 2 ||
-    !Number.isFinite(coords[0]) ||
-    !Number.isFinite(coords[1])
-  ) {
+  const { coordinates: validCoords } = validateAndNormalizeFinlandCoordinates(
+    raw.location?.position?.coordinates
+  );
+  if (!validCoords) {
     return { coordinates: null, hasExactCoordinates: false, isOnline };
   }
 
-  const [lon, lat] = coords;
+  const [lon, lat] = validCoords;
   const cityNameLower = CITIES[cityId].name.toLowerCase();
 
   // Detect legacy synthetic coordinates generated around the city center when address was just the city name
@@ -499,14 +594,27 @@ export function normalizeLinkedEvent(
   referenceCoords?: [number, number] | null,
   now: Date = new Date()
 ): NormalizedEvent | null {
-  if (!raw || !raw.id) return null;
+  if (!raw || !raw.id || raw.deleted === true) return null;
 
   const { coordinates, hasExactCoordinates, isOnline } =
     extractGenuineCoordinates(raw, cityId);
 
+  const externalLinkUrl =
+    (Array.isArray(raw.external_links)
+      ? raw.external_links
+          .map((l) => (typeof l?.link === 'string' ? l.link.trim() : ''))
+          .find((url) => /^https?:\/\//i.test(url))
+      : '') ||
+    pickLocalizedText(raw.provider_link, '') ||
+    (typeof raw.virtualevent_url === 'string' &&
+    /^https?:\/\//i.test(raw.virtualevent_url.trim())
+      ? raw.virtualevent_url.trim()
+      : '');
+
   const defaultInfoUrl =
     pickLocalizedText(raw.info_url, '') ||
     pickLocalizedText(raw.offers?.[0]?.info_url, '') ||
+    externalLinkUrl ||
     pickLocalizedText(raw.location?.info_url, '') ||
     null;
 
@@ -515,13 +623,27 @@ export function normalizeLinkedEvent(
   if (Array.isArray(raw.occurrence_dates) && raw.occurrence_dates.length > 0) {
     for (const occ of raw.occurrence_dates) {
       if (!occ?.start) continue;
-      const s = new Date(occ.start);
+      const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(occ.start.trim());
+      const s = new Date(
+        isDateOnly ? `${occ.start.trim()}T00:00:00+02:00` : occ.start
+      );
       if (Number.isNaN(s.getTime())) continue;
-      const parsedEnd = occ.end ? new Date(occ.end) : null;
+      const parsedEnd = occ.end
+        ? new Date(
+            /^\d{4}-\d{2}-\d{2}$/.test(occ.end.trim())
+              ? `${occ.end.trim()}T23:59:59+02:00`
+              : occ.end
+          )
+        : null;
       const e =
         parsedEnd && !Number.isNaN(parsedEnd.getTime()) && parsedEnd >= s
-          ? parsedEnd
-          : new Date(s.getTime() + 2 * 3600 * 1000);
+          ? parsedEnd.getTime() === s.getTime() && (raw.all_day || isDateOnly)
+            ? new Date(s.getTime() + 24 * 3600 * 1000 - 1000)
+            : parsedEnd
+          : new Date(
+              s.getTime() +
+                (raw.all_day || isDateOnly ? 24 * 3600 * 1000 - 1000 : 2 * 3600 * 1000)
+            );
 
       const occUrl = pickLocalizedText(occ.info_url, '') || defaultInfoUrl;
       occurrenceDates.push({
@@ -545,16 +667,35 @@ export function normalizeLinkedEvent(
     startTime = upcoming.start;
     endTime = upcoming.end;
   } else if (raw.start_time) {
-    const parsedStart = new Date(raw.start_time);
+    const trimmedStart = raw.start_time.trim();
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmedStart);
+    const parsedStart = new Date(
+      isDateOnly ? `${trimmedStart}T00:00:00+02:00` : trimmedStart
+    );
     if (Number.isNaN(parsedStart.getTime())) {
       return null;
     }
     startTime = parsedStart;
-    const parsedEnd = raw.end_time ? new Date(raw.end_time) : null;
+    const trimmedEnd = raw.end_time?.trim() || '';
+    const parsedEnd = trimmedEnd
+      ? new Date(
+          /^\d{4}-\d{2}-\d{2}$/.test(trimmedEnd)
+            ? `${trimmedEnd}T23:59:59+02:00`
+            : trimmedEnd
+        )
+      : null;
     endTime =
       parsedEnd && !Number.isNaN(parsedEnd.getTime()) && parsedEnd >= startTime
-        ? parsedEnd
-        : new Date(startTime.getTime() + 2 * 3600 * 1000);
+        ? parsedEnd.getTime() === startTime.getTime() &&
+          (raw.all_day || isDateOnly)
+          ? new Date(startTime.getTime() + 24 * 3600 * 1000 - 1000)
+          : parsedEnd
+        : new Date(
+            startTime.getTime() +
+              (raw.all_day || isDateOnly
+                ? 24 * 3600 * 1000 - 1000
+                : 2 * 3600 * 1000)
+          );
 
     occurrenceDates.push({
       start: startTime,
@@ -572,21 +713,45 @@ export function normalizeLinkedEvent(
   const category = categories[0];
   const topicMeta = TOPICS.find((t) => t.id === category) || TOPICS[0];
 
-  const title = pickLocalizedText(raw.name, 'Untitled Event');
-  const shortDescription = pickLocalizedText(
-    raw.short_description,
-    'Open flyer for event details and schedule.'
+  const baseTitle = decodeHtmlEntities(
+    pickLocalizedText(raw.name, 'Untitled Event')
   );
-  const descriptionHtml = pickLocalizedText(
-    raw.description,
-    `<p>${shortDescription}</p>`
-  );
+  const isCancelled = raw.event_status === 'EventCancelled';
+  const title =
+    isCancelled &&
+    !/\b(peruutettu|peruttu|cancelled|canceled|inställt)\b/i.test(baseTitle)
+      ? `[Cancelled] ${baseTitle}`
+      : baseTitle;
 
-  const rawVenueName = pickLocalizedText(raw.location?.name, '');
-  const rawStreetAddress = pickLocalizedText(raw.location?.street_address, '');
+  const shortDescription = decodeHtmlEntities(
+    pickLocalizedText(
+      raw.short_description,
+      'Open flyer for event details and schedule.'
+    )
+  );
+  const rawDesc = pickLocalizedText(raw.description, '');
+  const descriptionHtml = rawDesc
+    ? decodeHtmlEntities(rawDesc)
+    : `<p>${shortDescription}</p>`;
+
+  const rawVenueName = decodeHtmlEntities(
+    pickLocalizedText(raw.location?.name, '')
+  );
+  const rawExtraVenue = decodeHtmlEntities(
+    pickLocalizedText(raw.location_extra_info, '')
+  );
+  const rawStreetAddress = decodeHtmlEntities(
+    pickLocalizedText(raw.location?.street_address, '')
+  );
+  const cityNameLower = CITIES[cityId].name.toLowerCase();
+
+  const preferredVenueName =
+    rawVenueName && rawVenueName.trim().toLowerCase() !== cityNameLower
+      ? rawVenueName
+      : rawExtraVenue || rawVenueName;
 
   const venueName =
-    rawVenueName ||
+    preferredVenueName ||
     (isOnline
       ? 'Online Event'
       : hasExactCoordinates
@@ -609,7 +774,9 @@ export function normalizeLinkedEvent(
 
   const primaryImage = raw.images?.[0] || null;
   const imageUrl = getSafeEventImageUrl(raw, raw.id, [raw.id]);
-  const imageAlt = primaryImage?.alt_text || title;
+  const imageAlt = decodeHtmlEntities(
+    pickLocalizedText(primaryImage?.alt_text, title)
+  );
   const attribution = buildLicenseAttribution(raw, primaryImage, cityId);
 
   const { priceStatus, isFree, priceText } = evaluateEventPrice(raw);

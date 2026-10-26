@@ -4,7 +4,79 @@ export type LocalizedString = {
   en?: string | null;
 };
 
-export type CityId = 'helsinki' | 'espoo' | 'vantaa' | 'turku' | 'tampere' | 'oulu';
+export type CityId =
+  | 'helsinki'
+  | 'espoo'
+  | 'vantaa'
+  | 'turku'
+  | 'tampere'
+  | 'oulu'
+  | 'jyvaskyla'
+  | 'jamsa'
+  | 'aanekoski'
+  | 'keuruu'
+  | 'saarijarvi'
+  | 'viitasaari'
+  | 'pori'
+  | 'rauma'
+  | 'ulvila'
+  | 'harjavalta'
+  | 'huittinen'
+  | 'kokemaki'
+  | 'kankaanpaa'
+  | 'seinajoki'
+  | 'lapua'
+  | 'kauhava'
+  | 'kauhajoki'
+  | 'kurikka'
+  | 'alavus'
+  | 'ahtari'
+  | 'kuopio'
+  | 'salo';
+
+export type CityRegionGroup =
+  | 'capital'
+  | 'hubs'
+  | 'keski-suomi'
+  | 'satakunta'
+  | 'etela-pohjanmaa';
+
+export type EventSourceId =
+  | 'hel_linkedevents'
+  | 'localhub'
+  | 'keskisuomi_linkedevents'
+  | 'satakunta_linkedevents'
+  | 'ep_linkedevents'
+  | 'hellokuopio_tribe'
+  | 'salo_everblox';
+
+export interface SourceRegistryEntry {
+  id: EventSourceId;
+  name: string;
+  providerType:
+    | 'linkedevents'
+    | 'localhub'
+    | 'wp-tribe-events'
+    | 'wp-everblox';
+  baseUrl: string;
+  cities: CityId[];
+  capabilities: {
+    regionalSingleFetch: boolean;
+    requiresPlaceDirectory: boolean;
+    supportsDivisionFilter: boolean;
+    supportsAreaFilter: boolean;
+    supportsLocalityFilter: boolean;
+    supportsModifiedSince: boolean;
+    upgradeHttpUrls: boolean;
+    validateCoordinateOrder: boolean;
+  };
+  license: {
+    dataLicense: string;
+    licenseUrl: string;
+    attributionText: string;
+    imagePolicy: 'event_only' | 'cc_by_or_event_only';
+  };
+}
 
 export type TimeFilter = 'all' | 'live' | 'tonight' | 'weekend' | 'custom-date';
 
@@ -29,7 +101,7 @@ export interface LinkedEventImage {
   url: string;
   name?: string;
   photographer_name?: string | null;
-  alt_text?: string | null;
+  alt_text?: LocalizedString | string | null;
   license?: 'event_only' | 'cc_by' | string;
   data_source?: string | null;
   publisher?: string | null;
@@ -49,9 +121,11 @@ export interface LinkedEventDivision {
 export interface LinkedEventPlace {
   id: string;
   data_source?: string;
+  parent?: string | null;
   name: LocalizedString;
   street_address?: LocalizedString | null;
   address_locality?: LocalizedString | null;
+  address_region?: string | null;
   postal_code?: string | null;
   telephone?: LocalizedString | null;
   info_url?: LocalizedString | null;
@@ -60,6 +134,7 @@ export interface LinkedEventPlace {
     type: 'Point';
     coordinates: [number, number]; // [lon, lat]
   } | null;
+  coordinate_swapped?: boolean;
   '@id'?: string;
   '@context'?: string;
   '@type'?: string;
@@ -89,6 +164,12 @@ export interface RawEventOccurrence {
   info_url?: LocalizedString | string | null;
 }
 
+export interface LinkedEventExternalLink {
+  name?: string | null;
+  link?: string | null;
+  language?: string | null;
+}
+
 export interface RawLinkedEvent {
   id: string;
   name: LocalizedString;
@@ -96,18 +177,26 @@ export interface RawLinkedEvent {
   description?: LocalizedString | null;
   start_time: string | null;
   end_time?: string | null;
+  all_day?: boolean;
   occurrence_dates?: RawEventOccurrence[];
   super_event?: { id?: string; '@id'?: string } | null;
+  area?: { id?: string; '@id'?: string } | null;
   location?: LinkedEventPlace | null;
   location_extra_info?: LocalizedString | null;
   keywords?: LinkedEventKeyword[];
   images?: LinkedEventImage[];
   offers?: LinkedEventOffer[] | null;
-  info_url?: LocalizedString | null;
+  info_url?: LocalizedString | string | null;
+  external_links?: LinkedEventExternalLink[] | null;
   provider?: LocalizedString | string | null;
+  provider_name?: string | null;
+  provider_link?: LocalizedString | string | null;
+  is_virtualevent?: boolean | null;
+  virtualevent_url?: string | null;
   data_source?: string | null;
   publisher?: string | null;
   event_status?: string;
+  deleted?: boolean;
   '@id'?: string;
   '@context'?: string;
   '@type'?: string;
@@ -120,6 +209,8 @@ export interface LinkedEventsApiMeta {
   previous: string | null;
   generated_at?: string;
   source_calendar?: string;
+  source_id?: EventSourceId;
+  coordinate_corrections?: number;
 }
 
 export interface LinkedEventsApiResponse {

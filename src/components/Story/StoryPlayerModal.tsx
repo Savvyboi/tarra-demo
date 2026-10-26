@@ -31,7 +31,10 @@ import {
   resolveEventOccurrence,
 } from '../../utils/calendarUtils';
 import { formatDistance } from '../../utils/distanceUtils';
-import { getSafeEventImageUrl } from '../../utils/licenseGuard';
+import {
+  CC_BY_4_URL,
+  getSafeEventImageUrl,
+} from '../../utils/licenseGuard';
 
 // Modern Web Guidance (animate-to-from-top-layer): Probe discrete display transition support
 let supportsDisplayTransition: boolean | undefined;
@@ -707,7 +710,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
             </div>
           )}
 
-          {/* CC BY 4.0 API Attribution Footer */}
+          {/* API / Calendar Source Attribution Footer */}
           <div className="flex items-center justify-between font-mono-stamp text-[10px] text-[#b8b4a8] pt-0.5 border-t border-white/15">
             <span className="truncate">
               {currentEvent.attribution.apiAttributionText}
@@ -718,7 +721,9 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               rel="noopener noreferrer"
               className="underline hover:text-[#ffe600] shrink-0 ml-2 font-bold"
             >
-              CC BY 4.0
+              {currentEvent.attribution.apiLicenseUrl === CC_BY_4_URL
+                ? 'CC BY 4.0'
+                : 'Source Terms'}
             </a>
           </div>
         </div>

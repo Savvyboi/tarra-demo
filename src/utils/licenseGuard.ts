@@ -14,6 +14,7 @@ const CITY_SOURCE_ATTRIBUTION: Record<
   CityId,
   { text: string; url: string; label: string }
 > = {
+  // Capital Region
   helsinki: {
     text: 'Event data: City of Helsinki / 6Aika Linked Events API',
     url: CC_BY_4_URL,
@@ -29,6 +30,8 @@ const CITY_SOURCE_ATTRIBUTION: Record<
     url: CC_BY_4_URL,
     label: 'CC BY 4.0',
   },
+
+  // Localhub Municipal Calendars
   turku: {
     text: 'Event data: City of Turku Event Calendar (kalenteri.turku.fi)',
     url: 'https://kalenteri.turku.fi',
@@ -43,6 +46,126 @@ const CITY_SOURCE_ATTRIBUTION: Record<
     text: 'Event data: Mun Oulu Event Calendar (tapahtumat.munoulu.fi)',
     url: 'https://tapahtumat.munoulu.fi',
     label: 'Oulu Calendar',
+  },
+
+  // Keski-Suomi Events (CC BY 4.0)
+  jyvaskyla: {
+    text: 'Event data: Keski-Suomi Events API (keskisuomievents.fi) • CC BY 4.0',
+    url: CC_BY_4_URL,
+    label: 'Keski-Suomi Events',
+  },
+  jamsa: {
+    text: 'Event data: Keski-Suomi Events API (keskisuomievents.fi) • CC BY 4.0',
+    url: CC_BY_4_URL,
+    label: 'Keski-Suomi Events',
+  },
+  aanekoski: {
+    text: 'Event data: Keski-Suomi Events API (keskisuomievents.fi) • CC BY 4.0',
+    url: CC_BY_4_URL,
+    label: 'Keski-Suomi Events',
+  },
+  keuruu: {
+    text: 'Event data: Keski-Suomi Events API (keskisuomievents.fi) • CC BY 4.0',
+    url: CC_BY_4_URL,
+    label: 'Keski-Suomi Events',
+  },
+  saarijarvi: {
+    text: 'Event data: Keski-Suomi Events API (keskisuomievents.fi) • CC BY 4.0',
+    url: CC_BY_4_URL,
+    label: 'Keski-Suomi Events',
+  },
+  viitasaari: {
+    text: 'Event data: Keski-Suomi Events API (keskisuomievents.fi) • CC BY 4.0',
+    url: CC_BY_4_URL,
+    label: 'Keski-Suomi Events',
+  },
+
+  // Satakunta Events (CC BY 4.0)
+  pori: {
+    text: 'Event data: Satakunta Events API (satakuntaevents.fi) • CC BY 4.0',
+    url: CC_BY_4_URL,
+    label: 'Satakunta Events',
+  },
+  rauma: {
+    text: 'Event data: Satakunta Events API (satakuntaevents.fi) • CC BY 4.0',
+    url: CC_BY_4_URL,
+    label: 'Satakunta Events',
+  },
+  ulvila: {
+    text: 'Event data: Satakunta Events API (satakuntaevents.fi) • CC BY 4.0',
+    url: CC_BY_4_URL,
+    label: 'Satakunta Events',
+  },
+  harjavalta: {
+    text: 'Event data: Satakunta Events API (satakuntaevents.fi) • CC BY 4.0',
+    url: CC_BY_4_URL,
+    label: 'Satakunta Events',
+  },
+  huittinen: {
+    text: 'Event data: Satakunta Events API (satakuntaevents.fi) • CC BY 4.0',
+    url: CC_BY_4_URL,
+    label: 'Satakunta Events',
+  },
+  kokemaki: {
+    text: 'Event data: Satakunta Events API (satakuntaevents.fi) • CC BY 4.0',
+    url: CC_BY_4_URL,
+    label: 'Satakunta Events',
+  },
+  kankaanpaa: {
+    text: 'Event data: Satakunta Events API (satakuntaevents.fi) • CC BY 4.0',
+    url: CC_BY_4_URL,
+    label: 'Satakunta Events',
+  },
+
+  // EP Kalenteri / South Ostrobothnia
+  seinajoki: {
+    text: 'Event data: EP Kalenteri / Etelä-Pohjanmaan liitto (epkalenteri.linkedevents.fi)',
+    url: 'https://epliitto.fi/kulttuurin-kehittaminen/tapahtumakalenteri/',
+    label: 'EP Kalenteri',
+  },
+  lapua: {
+    text: 'Event data: EP Kalenteri / Etelä-Pohjanmaan liitto (epkalenteri.linkedevents.fi)',
+    url: 'https://epliitto.fi/kulttuurin-kehittaminen/tapahtumakalenteri/',
+    label: 'EP Kalenteri',
+  },
+  kauhava: {
+    text: 'Event data: EP Kalenteri / Etelä-Pohjanmaan liitto (epkalenteri.linkedevents.fi)',
+    url: 'https://epliitto.fi/kulttuurin-kehittaminen/tapahtumakalenteri/',
+    label: 'EP Kalenteri',
+  },
+  kauhajoki: {
+    text: 'Event data: EP Kalenteri / Etelä-Pohjanmaan liitto (epkalenteri.linkedevents.fi)',
+    url: 'https://epliitto.fi/kulttuurin-kehittaminen/tapahtumakalenteri/',
+    label: 'EP Kalenteri',
+  },
+  kurikka: {
+    text: 'Event data: EP Kalenteri / Etelä-Pohjanmaan liitto (epkalenteri.linkedevents.fi)',
+    url: 'https://epliitto.fi/kulttuurin-kehittaminen/tapahtumakalenteri/',
+    label: 'EP Kalenteri',
+  },
+  alavus: {
+    text: 'Event data: EP Kalenteri / Etelä-Pohjanmaan liitto (epkalenteri.linkedevents.fi)',
+    url: 'https://epliitto.fi/kulttuurin-kehittaminen/tapahtumakalenteri/',
+    label: 'EP Kalenteri',
+  },
+  ahtari: {
+    text: 'Event data: EP Kalenteri / Etelä-Pohjanmaan liitto (epkalenteri.linkedevents.fi)',
+    url: 'https://epliitto.fi/kulttuurin-kehittaminen/tapahtumakalenteri/',
+    label: 'EP Kalenteri',
+  },
+
+  // Hello Kuopio
+  kuopio: {
+    text: 'Event data: Hello Kuopio Regional Event Calendar (hellokuopio.fi)',
+    url: 'https://www.hellokuopio.fi',
+    label: 'Hello Kuopio',
+  },
+
+  // Salon Tapahtumat
+  salo: {
+    text: 'Event data: City of Salo Event Calendar (tapahtumat.salo.fi)',
+    url: 'https://tapahtumat.salo.fi',
+    label: 'Salon Tapahtumat',
   },
 };
 
@@ -68,9 +191,24 @@ export function pickLocalizedText(
   );
 }
 
+function sanitizePublisherString(rawPublisher: string): string {
+  const trimmed = rawPublisher.trim();
+  if (!trimmed) return '';
+  // Reject internal OIDC user identifiers or machine place namespaces
+  if (
+    /oidc:user:|^[0-9a-f-]{24,}$|^se:places$|^eptapahtumat:eptapahtumat$/i.test(
+      trimmed
+    )
+  ) {
+    return '';
+  }
+  return trimmed;
+}
+
 /**
- * Formats photographer and source attribution accurately across both
- * Capital Region 6Aika Linked Events feeds and Localhub municipal calendars.
+ * Formats photographer and source attribution accurately across
+ * Capital Region 6Aika Linked Events, Regional Linked Events (Keski-Suomi, Satakunta, EP Kalenteri),
+ * Localhub municipal calendars, Hello Kuopio, and Salon Tapahtumat.
  */
 export function buildLicenseAttribution(
   event: RawLinkedEvent,
@@ -81,8 +219,13 @@ export function buildLicenseAttribution(
   const licenseType: 'event_only' | 'cc_by' =
     rawLicense === 'cc_by' ? 'cc_by' : 'event_only';
 
-  const providerName = pickLocalizedText(event.provider, '').trim();
-  const publisherName = (event.publisher || '').trim();
+  const providerName = (
+    pickLocalizedText(event.provider, '').trim() ||
+    (typeof event.provider_name === 'string'
+      ? event.provider_name.trim()
+      : '')
+  ).trim();
+  const publisherName = sanitizePublisherString(event.publisher || '');
   const dataSource = (
     primaryImage?.data_source ||
     event.data_source ||
@@ -91,14 +234,17 @@ export function buildLicenseAttribution(
 
   const resolvedCityId: CityId | undefined =
     cityId ||
-    (dataSource === 'turku' ||
-    dataSource === 'tampere' ||
-    dataSource === 'oulu' ||
-    dataSource === 'helsinki' ||
-    dataSource === 'espoo' ||
-    dataSource === 'vantaa'
+    (Object.hasOwn(CITY_SOURCE_ATTRIBUTION, dataSource)
       ? (dataSource as CityId)
-      : undefined);
+      : dataSource === 'keskisuomievents'
+        ? 'jyvaskyla'
+        : dataSource === 'satakuntaevents'
+          ? 'pori'
+          : dataSource === 'eptapahtumat'
+            ? 'seinajoki'
+            : dataSource === 'hellokuopio'
+              ? 'kuopio'
+              : undefined);
 
   const citySource = resolvedCityId
     ? CITY_SOURCE_ATTRIBUTION[resolvedCityId]
@@ -108,22 +254,25 @@ export function buildLicenseAttribution(
     providerName ||
     publisherName ||
     (resolvedCityId ? citySource?.label : '') ||
-    dataSource ||
+    sanitizePublisherString(dataSource) ||
     '6Aika Linked Events';
 
   const rawPhotographer = (primaryImage?.photographer_name || '').trim();
-  const isLocalhubCity =
-    resolvedCityId === 'turku' ||
-    resolvedCityId === 'tampere' ||
-    resolvedCityId === 'oulu';
+  const isConvertedSnapshotCity =
+    resolvedCityId !== 'helsinki' &&
+    resolvedCityId !== 'espoo' &&
+    resolvedCityId !== 'vantaa';
 
-  // Detect placeholder strings or Localhub feeds where providerName was previously copied into photographer_name
+  // Detect placeholder strings or converted feeds where providerName was copied into photographer_name
   const isGenuinePhotographer =
     Boolean(rawPhotographer) &&
     rawPhotographer !== '.' &&
     rawPhotographer !== '-' &&
     rawPhotographer.toLowerCase() !== 'unknown' &&
-    !(isLocalhubCity && (rawPhotographer === providerName || rawPhotographer === publisherName));
+    !(
+      isConvertedSnapshotCity &&
+      (rawPhotographer === providerName || rawPhotographer === publisherName)
+    );
 
   const photographer = isGenuinePhotographer
     ? rawPhotographer
@@ -140,7 +289,9 @@ export function buildLicenseAttribution(
     hasPhotographerCredit: isGenuinePhotographer,
     source,
     canReuseOutOfContext: licenseType === 'cc_by',
-    apiAttributionText: citySource ? citySource.text : LINKED_EVENTS_CREDIT_TEXT,
+    apiAttributionText: citySource
+      ? citySource.text
+      : LINKED_EVENTS_CREDIT_TEXT,
     apiLicenseUrl: citySource ? citySource.url : CC_BY_4_URL,
   };
 }

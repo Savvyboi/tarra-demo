@@ -552,7 +552,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
       <div
         ref={containerRef}
         className="w-full h-full"
-        aria-label="Interactive 6-City Street Sticker Map"
+        aria-label="Interactive Finnish Street Sticker Map"
       />
     </div>
   );

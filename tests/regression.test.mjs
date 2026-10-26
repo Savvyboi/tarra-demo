@@ -81,8 +81,8 @@ test('Check 01 (Finding 03): Multi-day exhibition and overnight event match all 
     {
       id: 'turku:overnight-party',
       name: { fi: 'Late Night Club' },
-      start_time: '2026-10-20T23:00:00+03:00',
-      end_time: '2026-10-21T02:00:00+03:00',
+      start_time: new Date(2026, 9, 20, 23, 0, 0).toISOString(),
+      end_time: new Date(2026, 9, 21, 2, 0, 0).toISOString(),
       offers: [{ is_free: false, price: { fi: '15 €' } }],
     },
     'turku'

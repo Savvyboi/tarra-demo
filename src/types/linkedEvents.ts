@@ -205,6 +205,9 @@ export interface RawLinkedEvent {
 export interface LinkedEventsApiMeta {
   count: number;
   total_upstream?: number;
+  capped_from?: number;
+  coverage_start?: string;
+  coverage_end?: string;
   next: string | null;
   previous: string | null;
   generated_at?: string;
@@ -249,6 +252,7 @@ export interface NormalizedEvent {
   dateKey: string;
   occurrenceDates: NormalizedOccurrence[];
   isLiveNow: boolean;
+  isOngoingLongSpan?: boolean;
   isStartingSoon: boolean;
   isTonight: boolean;
   isThisWeekend: boolean;

@@ -7,7 +7,10 @@ const __dirname = path.dirname(__filename);
 const FEEDS_DIR = path.resolve(__dirname, '../public/feeds');
 
 const HORIZON_DAYS = 90;
-const MAX_CONSOLIDATED_EVENTS_PER_CITY = 450;
+const CAPITAL_HORIZON_DAYS = 60;
+const MAX_CONSOLIDATED_EVENTS_PER_CITY = 550;
+const MAX_DESCRIPTION_CHARS = 1100;
+export const MAX_FALLBACK_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
 const KNOWN_LINKED_EVENTS_HOSTS = new Set([
   'epkalenteri.linkedevents.fi',
@@ -25,7 +28,7 @@ export const LOCALHUB_CITIES = {
     frontend: 'https://kalenteri.turku.fi',
     s3Base: 'https://localhub-oy.s3.eu-central-1.amazonaws.com/images',
     defaultCoords: [22.2666, 60.4518],
-    maxEvents: 450,
+    maxEvents: 550,
   },
   tampere: {
     cityId: 'tampere',
@@ -35,7 +38,7 @@ export const LOCALHUB_CITIES = {
     frontend: 'https://tapahtumat.tampere.fi',
     s3Base: 'https://cdn.townbase.com/images',
     defaultCoords: [23.761, 61.4978],
-    maxEvents: 450,
+    maxEvents: 550,
   },
   oulu: {
     cityId: 'oulu',
@@ -45,7 +48,7 @@ export const LOCALHUB_CITIES = {
     frontend: 'https://tapahtumat.munoulu.fi',
     s3Base: 'https://localhub-oy.s3.eu-central-1.amazonaws.com/images',
     defaultCoords: [25.4651, 65.0121],
-    maxEvents: 450,
+    maxEvents: 550,
   },
 };
 
@@ -285,6 +288,181 @@ function stripHtmlTags(html) {
     .trim();
 }
 
+const syncHelsinkiPartsFmt = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Helsinki',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+
+function getHelsinkiWallParts(date) {
+  const parts = syncHelsinkiPartsFmt.formatToParts(date);
+  let year = 0;
+  let month = 0;
+  let day = 0;
+  let hour = 0;
+  let minute = 0;
+  let second = 0;
+  for (const p of parts) {
+    if (p.type === 'year') year = Number(p.value);
+    else if (p.type === 'month') month = Number(p.value);
+    else if (p.type === 'day') day = Number(p.value);
+    else if (p.type === 'hour') {
+      const h = Number(p.value);
+      hour = h === 24 ? 0 : h;
+    } else if (p.type === 'minute') minute = Number(p.value);
+    else if (p.type === 'second') second = Number(p.value);
+  }
+  return { year, month, day, hour, minute, second };
+}
+
+export function toHelsinkiDateKey(date) {
+  const p = getHelsinkiWallParts(date);
+  return `${String(p.year).padStart(4, '0')}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+}
+
+function addDaysToDateKey(dateKey, deltaDays) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + deltaDays, 12, 0, 0, 0));
+  return `${String(dt.getUTCFullYear()).padStart(4, '0')}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+export function zonedHelsinkiToIso(year, month, day, hour = 0, minute = 0, second = 0) {
+  const targetUtc = Date.UTC(year, month - 1, day, hour, minute, second, 0);
+  const guess1 = targetUtc - 2 * 3600 * 1000;
+  const p1 = getHelsinkiWallParts(new Date(guess1));
+  const off1 =
+    Date.UTC(p1.year, p1.month - 1, p1.day, p1.hour, p1.minute, p1.second, 0) -
+    guess1;
+  const guess2 = targetUtc - off1;
+  const p2 = getHelsinkiWallParts(new Date(guess2));
+  const off2 =
+    Date.UTC(p2.year, p2.month - 1, p2.day, p2.hour, p2.minute, p2.second, 0) -
+    guess2;
+  return new Date(targetUtc - off2).toISOString();
+}
+
+function parseSyncTimestamp(raw, mode = 'start') {
+  if (!raw || typeof raw !== 'string') return null;
+  let trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (/^00[2-9]\d-/.test(trimmed)) {
+    trimmed = `20${trimmed.slice(2)}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [y, m, d] = trimmed.split('-').map(Number);
+    return mode === 'end'
+      ? new Date(zonedHelsinkiToIso(y, m, d, 23, 59, 59))
+      : new Date(zonedHelsinkiToIso(y, m, d, 0, 0, 0));
+  }
+  const localMatch =
+    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(trimmed);
+  if (localMatch) {
+    return new Date(
+      zonedHelsinkiToIso(
+        Number(localMatch[1]),
+        Number(localMatch[2]),
+        Number(localMatch[3]),
+        Number(localMatch[4]),
+        Number(localMatch[5]),
+        localMatch[6] ? Number(localMatch[6]) : 0
+      )
+    );
+  }
+  const dt = new Date(trimmed);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+function isNonEventTitle(title) {
+  if (!title || typeof title !== 'string') return false;
+  return /(?<!\p{L})(?:kausikortti|kausikortit|kotipassi|sarjakortti|lahjakortti|vuosikortti|season\s+ticket|season\s+pass)(?!\p{L})/iu.test(
+    title
+  );
+}
+
+/**
+ * Strips inline styles/classes/comments and caps oversized descriptions cleanly (`PERF-03`).
+ */
+function compactDescriptionHtml(rawHtml, maxChars = MAX_DESCRIPTION_CHARS) {
+  if (!rawHtml || typeof rawHtml !== 'string') return '';
+  let cleaned = decodeHtmlEntities(rawHtml)
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/\s+(?:style|class|id|data-[a-z0-9_-]+)="[^"]*"/gi, '')
+    .replace(/\s+(?:style|class|id|data-[a-z0-9_-]+)='[^']*'/gi, '')
+    .replace(/<p>\s*(?:&nbsp;|\u00a0|\s)*<\/p>/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  if (cleaned.length <= maxChars) {
+    return cleaned;
+  }
+
+  // Truncate cleanly before an HTML tag or whitespace boundary so no tag is torn open
+  let slice = cleaned.slice(0, maxChars);
+  const lastOpenBracket = slice.lastIndexOf('<');
+  const lastCloseBracket = slice.lastIndexOf('>');
+  if (lastOpenBracket > lastCloseBracket) {
+    slice = slice.slice(0, lastOpenBracket);
+  }
+  const paraBreak = Math.max(slice.lastIndexOf('</p>'), slice.lastIndexOf('</li>'));
+  if (paraBreak > maxChars * 0.55) {
+    const tagLen = slice.startsWith('</p>', paraBreak) ? 4 : 5;
+    return `${slice.slice(0, paraBreak + tagLen)}<p>…</p>`;
+  }
+  const plainFallback = stripHtmlTags(cleaned).slice(0, maxChars).trim();
+  return `<p>${plainFallback}…</p>`;
+}
+
+/**
+ * Deduplicates identical `fi` / `sv` / `en` strings so JSON feeds don't store
+ * 2–3 copies of the same text (`PERF-03`).
+ */
+function compactLocalized(obj) {
+  if (!obj || typeof obj !== 'object') return null;
+  const fi = typeof obj.fi === 'string' ? obj.fi.trim() : '';
+  const sv = typeof obj.sv === 'string' ? obj.sv.trim() : '';
+  const en = typeof obj.en === 'string' ? obj.en.trim() : '';
+  const out = {};
+  if (fi) out.fi = fi;
+  if (sv && sv !== fi) out.sv = sv;
+  if (en && en !== fi && en !== sv) out.en = en;
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
+ * Picks only the primary localized string (`en || fi || sv` matching `pickLocalizedText`)
+ * for bulky fields (`description`, `short_description`, `keywords`, `offers`) (`PERF-03`).
+ */
+function pickSingleLocalized(obj, transform) {
+  if (!obj) return null;
+  if (typeof obj === 'string') {
+    const val = transform ? transform(obj) : obj.trim();
+    return val ? { fi: val } : null;
+  }
+  if (typeof obj !== 'object') return null;
+  for (const lang of ['en', 'fi', 'sv']) {
+    const rawVal = typeof obj[lang] === 'string' ? obj[lang].trim() : '';
+    if (rawVal) {
+      const val = transform ? transform(rawVal) : rawVal;
+      if (val) return { [lang]: val };
+    }
+  }
+  return null;
+}
+
+function compactKeywordId(rawId) {
+  if (!rawId || typeof rawId !== 'string') return '';
+  const ysoMatch = /(yso:p\d+)/i.exec(rawId);
+  if (ysoMatch) return ysoMatch[1].toLowerCase();
+  const parts = rawId.replace(/\/+$/, '').split('/');
+  return parts[parts.length - 1] || '';
+}
+
 function haversineKm([lon1, lat1], [lon2, lat2]) {
   const toRad = (deg) => (deg * Math.PI) / 180;
   const R = 6371;
@@ -412,8 +590,11 @@ function buildLocalhubOffers(page, chosenSlot, ticketUrl) {
   return [];
 }
 
-function convertLocalhubPageToLinkedEvent(page, cfg) {
-  const now = new Date();
+export function convertLocalhubPageToLinkedEvent(page, cfg, now = new Date()) {
+  if (!page || isNonEventTitle(page.name || '')) {
+    return null;
+  }
+  const nowMs = now.getTime();
   const loc =
     Array.isArray(page.locations) && page.locations[0]
       ? page.locations[0]
@@ -440,34 +621,60 @@ function convertLocalhubPageToLinkedEvent(page, cfg) {
   const rawDates = Array.isArray(page.event?.dates) ? page.event.dates : [];
   const validDates = rawDates
     .filter((d) => d && d.start && !d.isCancelled)
-    .map((d) => ({
-      start: d.start,
-      end:
-        d.end ||
-        new Date(new Date(d.start).getTime() + 2 * 3600 * 1000).toISOString(),
-      urlPurchaseTicket: d.urlPurchaseTicket || d.urlSignUp || null,
-    }));
+    .map((d) => {
+      const startDt = parseSyncTimestamp(d.start, 'start');
+      if (!startDt) return null;
+      const endDt = d.end
+        ? parseSyncTimestamp(d.end, 'end')
+        : new Date(startDt.getTime() + 2 * 3600 * 1000);
+      const safeEnd =
+        endDt && endDt >= startDt
+          ? endDt
+          : new Date(startDt.getTime() + 2 * 3600 * 1000);
+      return {
+        start: startDt.toISOString(),
+        end: safeEnd.toISOString(),
+        endMs: safeEnd.getTime(),
+        urlPurchaseTicket: d.urlPurchaseTicket || d.urlSignUp || null,
+      };
+    })
+    .filter(Boolean);
 
-  const fallbackStart = page.defaultStartDate || page.event?.start || null;
-  const fallbackEnd =
-    page.defaultEndDate ||
-    page.event?.end ||
-    (fallbackStart
-      ? new Date(
-          new Date(fallbackStart).getTime() + 2 * 3600 * 1000
-        ).toISOString()
-      : null);
+  // Drop past occurrences; return null when no date has end >= now (`BUG-02`, `DATA-01`)
+  const upcomingDates = validDates.filter((d) => d.endMs >= nowMs);
 
-  const chosenSlot =
-    validDates.find((d) => new Date(d.end) >= now) ||
-    validDates[0] ||
-    (fallbackStart
-      ? {
-          start: fallbackStart,
-          end: fallbackEnd,
-          urlPurchaseTicket: null,
-        }
-      : null);
+  let chosenSlot;
+  if (validDates.length > 0) {
+    if (upcomingDates.length === 0) {
+      return null;
+    }
+    upcomingDates.sort(
+      (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
+    );
+    chosenSlot = upcomingDates[0];
+  } else {
+    const fallbackStartRaw = page.defaultStartDate || page.event?.start || null;
+    const fallbackStartDt = parseSyncTimestamp(fallbackStartRaw, 'start');
+    if (!fallbackStartDt) {
+      return null;
+    }
+    const fallbackEndRaw = page.defaultEndDate || page.event?.end || null;
+    const fallbackEndDt = fallbackEndRaw
+      ? parseSyncTimestamp(fallbackEndRaw, 'end')
+      : new Date(fallbackStartDt.getTime() + 2 * 3600 * 1000);
+    const safeEndDt =
+      fallbackEndDt && fallbackEndDt >= fallbackStartDt
+        ? fallbackEndDt
+        : new Date(fallbackStartDt.getTime() + 2 * 3600 * 1000);
+    if (safeEndDt.getTime() < nowMs) {
+      return null;
+    }
+    chosenSlot = {
+      start: fallbackStartDt.toISOString(),
+      end: safeEndDt.toISOString(),
+      urlPurchaseTicket: null,
+    };
+  }
 
   if (!chosenSlot || !chosenSlot.start) {
     return null;
@@ -496,10 +703,11 @@ function convertLocalhubPageToLinkedEvent(page, cfg) {
     `${cfg.cityName} Tapahtumakalenteri`;
 
   const shortText =
-    (page.descriptionShort || '').trim() || (page.name || '').trim();
+    stripHtmlTags(page.descriptionShort || '').slice(0, 260) ||
+    (page.name || '').trim();
 
   const longHtml =
-    (page.descriptionLong || '').trim() || `<p>${shortText}</p>`;
+    compactDescriptionHtml(page.descriptionLong || '') || `<p>${shortText}</p>`;
 
   const offers = buildLocalhubOffers(page, chosenSlot, ticketUrl);
 
@@ -511,42 +719,37 @@ function convertLocalhubPageToLinkedEvent(page, cfg) {
 
   return {
     id: `${cfg.cityId}:${page._id}`,
-    '@type': 'Event/LinkedEvent',
     data_source: cfg.cityId,
     publisher: providerName,
     name: {
       fi: page.name || 'Tapahtuma',
-      en: page.name || 'Event',
     },
     short_description: {
       fi: shortText,
-      en: shortText,
     },
     description: {
       fi: longHtml,
-      en: longHtml,
     },
     start_time: chosenSlot.start,
     end_time: chosenSlot.end,
-    occurrence_dates: validDates.slice(0, 60).map((d) => ({
-      start: d.start,
-      end: d.end,
-      ...(d.urlPurchaseTicket
-        ? {
-            info_url: {
-              fi: d.urlPurchaseTicket,
-              en: d.urlPurchaseTicket,
-            },
-          }
-        : {}),
-    })),
+    ...(upcomingDates.length > 0
+      ? {
+          occurrence_dates: upcomingDates.slice(0, 60).map((d) => ({
+            start: d.start,
+            end: d.end,
+            ...(d.urlPurchaseTicket && d.urlPurchaseTicket !== ticketUrl
+              ? {
+                  info_url: d.urlPurchaseTicket,
+                }
+              : {}),
+          })),
+        }
+      : {}),
     provider: {
       fi: providerName,
-      en: providerName,
     },
     info_url: {
       fi: ticketUrl,
-      en: ticketUrl,
     },
     offers,
     location: {
@@ -555,15 +758,12 @@ function convertLocalhubPageToLinkedEvent(page, cfg) {
         : `${cfg.cityId}:unmapped-${page._id}`,
       name: {
         fi: venueName,
-        en: venueName,
       },
       street_address: {
         fi: streetAddress,
-        en: streetAddress,
       },
       address_locality: {
         fi: cfg.cityName,
-        en: cfg.cityName,
       },
       position: coordinates
         ? {
@@ -574,7 +774,7 @@ function convertLocalhubPageToLinkedEvent(page, cfg) {
     },
     keywords: categories.map((cat) => ({
       id: `cat:${cat.toLowerCase()}`,
-      name: { fi: cat, en: cat },
+      name: { fi: cat },
     })),
     images: imageUrl
       ? [
@@ -619,10 +819,29 @@ async function syncLocalhubCity(cfg) {
   console.log(`[sync-feeds] Fetching ${cfg.cityName} calendar from ${url}...`);
   const json = await fetchJsonWithRetry(url, 3);
   const pages = Array.isArray(json.pages) ? json.pages : [];
-  const sliced = pages.slice(0, cfg.maxEvents);
-  const converted = sliced
-    .map((p) => convertLocalhubPageToLinkedEvent(p, cfg))
+  const now = new Date();
+  const nowMs = now.getTime();
+
+  // Convert ALL upstream items first, dropping ended items before sorting & capping (`DATA-01`)
+  const allUpcoming = pages
+    .map((p) => convertLocalhubPageToLinkedEvent(p, cfg, now))
     .filter(Boolean);
+
+  allUpcoming.sort((a, b) => {
+    const aNext = Math.max(new Date(a.start_time).getTime(), nowMs);
+    const bNext = Math.max(new Date(b.start_time).getTime(), nowMs);
+    if (aNext !== bNext) return aNext - bNext;
+    const aDur = new Date(a.end_time).getTime() - new Date(a.start_time).getTime();
+    const bDur = new Date(b.end_time).getTime() - new Date(b.start_time).getTime();
+    return aDur - bDur;
+  });
+
+  if (allUpcoming.length > cfg.maxEvents) {
+    console.warn(
+      `[sync-feeds] ! ${cfg.cityName}: Cap hit — keeping ${cfg.maxEvents} of ${allUpcoming.length} upcoming events (from ${pages.length} upstream pages).`
+    );
+  }
+  const converted = allUpcoming.slice(0, cfg.maxEvents);
 
   if (converted.length < 10) {
     throw new Error(
@@ -630,23 +849,14 @@ async function syncLocalhubCity(cfg) {
     );
   }
 
-  const payload = {
-    meta: {
-      count: converted.length,
-      total_upstream: pages.length,
-      next: null,
-      previous: null,
-      generated_at: new Date().toISOString(),
-      source_calendar: cfg.frontend,
-      source_id: 'localhub',
-    },
-    data: converted,
-  };
-
-  const outPath = path.join(FEEDS_DIR, `${cfg.cityId}.json`);
-  await fs.writeFile(outPath, JSON.stringify(payload), 'utf8');
+  await writeCityFeedPayload(cfg.cityId, converted, {
+    totalUpstream: allUpcoming.length,
+    cappedFrom: allUpcoming.length > converted.length ? allUpcoming.length : undefined,
+    sourceCalendar: cfg.frontend,
+    sourceId: 'localhub',
+  });
   console.log(
-    `[sync-feeds] ✓ ${cfg.cityName}: Saved ${converted.length} real events (from ${pages.length} upstream) -> public/feeds/${cfg.cityId}.json`
+    `[sync-feeds] ✓ ${cfg.cityName}: Saved ${converted.length} upcoming events (of ${allUpcoming.length} active, ${pages.length} raw upstream) -> public/feeds/${cfg.cityId}.json`
   );
   return converted.length;
 }
@@ -659,6 +869,12 @@ function compactLinkedEvent(raw, cityId, options = {}) {
   } = options;
 
   if (!raw || !raw.id || raw.deleted === true) {
+    return { event: null, swapped: false };
+  }
+
+  const titleCheck =
+    raw.name?.fi || raw.name?.en || raw.name?.sv || '';
+  if (isNonEventTitle(decodeHtmlEntities(titleCheck))) {
     return { event: null, swapped: false };
   }
 
@@ -728,40 +944,46 @@ function compactLinkedEvent(raw, cityId, options = {}) {
           : null;
 
   const cleanDesc = raw.description
-    ? {
-        ...(raw.description.fi
-          ? { fi: decodeHtmlEntities(raw.description.fi) }
-          : {}),
-        ...(raw.description.sv
-          ? { sv: decodeHtmlEntities(raw.description.sv) }
-          : {}),
-        ...(raw.description.en
-          ? { en: decodeHtmlEntities(raw.description.en) }
-          : {}),
-      }
+    ? pickSingleLocalized(raw.description, (v) => compactDescriptionHtml(v))
     : null;
 
+  const primaryDescHtml =
+    cleanDesc?.en || cleanDesc?.fi || cleanDesc?.sv || '';
+
   const cleanShortDesc =
-    raw.short_description &&
-    (raw.short_description.fi?.trim() ||
-      raw.short_description.en?.trim() ||
-      raw.short_description.sv?.trim())
-      ? {
-          ...(raw.short_description.fi
-            ? { fi: stripHtmlTags(raw.short_description.fi).slice(0, 260) }
-            : {}),
-          ...(raw.short_description.sv
-            ? { sv: stripHtmlTags(raw.short_description.sv).slice(0, 260) }
-            : {}),
-          ...(raw.short_description.en
-            ? { en: stripHtmlTags(raw.short_description.en).slice(0, 260) }
-            : {}),
-        }
-      : cleanDesc?.fi
-        ? { fi: stripHtmlTags(cleanDesc.fi).slice(0, 220) }
-        : null;
+    pickSingleLocalized(raw.short_description, (v) =>
+      stripHtmlTags(v).slice(0, 240)
+    ) ||
+    (primaryDescHtml
+      ? { fi: stripHtmlTags(primaryDescHtml).slice(0, 200) }
+      : null);
 
   const superEventId = raw.super_event?.['@id'] || raw.super_event?.id || null;
+  const compactProvider =
+    typeof provider === 'object' ? pickSingleLocalized(provider) : provider;
+  const compactInfoUrl =
+    typeof infoUrl === 'object' ? pickSingleLocalized(infoUrl) : infoUrl;
+  const compactExtraLoc = pickSingleLocalized(raw.location_extra_info);
+
+  const compactOffers = Array.isArray(raw.offers)
+    ? raw.offers.slice(0, 2).map((o) => ({
+        is_free: Boolean(o?.is_free),
+        ...(o?.price ? { price: pickSingleLocalized(o.price) } : {}),
+        ...(o?.info_url ? { info_url: pickSingleLocalized(o.info_url) } : {}),
+      }))
+    : [];
+
+  const compactKeywords = [
+    ...(Array.isArray(raw.keywords) ? raw.keywords : []),
+    ...(Array.isArray(raw.audience) ? raw.audience : []),
+  ]
+    .slice(0, 10)
+    .map((k) => {
+      const id = compactKeywordId(k.id || k['@id'] || '');
+      const name = pickSingleLocalized(k.name);
+      return id || name ? { ...(id ? { id } : {}), ...(name ? { name } : {}) } : null;
+    })
+    .filter(Boolean);
 
   return {
     swapped,
@@ -769,21 +991,24 @@ function compactLinkedEvent(raw, cityId, options = {}) {
       id: namespacedId,
       data_source: cityId,
       publisher: sanitizePublisher(raw.publisher) || sourceDataLabel,
-      name: raw.name,
-      short_description: cleanShortDesc,
-      description: cleanDesc,
+      name: compactLocalized(raw.name) || raw.name,
+      ...(cleanShortDesc ? { short_description: cleanShortDesc } : {}),
+      ...(cleanDesc ? { description: cleanDesc } : {}),
       start_time: raw.start_time,
       end_time: raw.end_time,
-      event_status: raw.event_status || 'EventScheduled',
-      is_virtualevent: Boolean(raw.is_virtualevent),
-      virtualevent_url: raw.virtualevent_url || null,
-      super_event: superEventId
-        ? { id: String(superEventId), '@id': String(superEventId) }
-        : null,
-      provider,
-      info_url: infoUrl,
-      offers: Array.isArray(raw.offers) ? raw.offers : [],
-      location_extra_info: raw.location_extra_info || null,
+      ...(raw.all_day ? { all_day: true } : {}),
+      ...(raw.event_status && raw.event_status !== 'EventScheduled'
+        ? { event_status: raw.event_status }
+        : {}),
+      ...(raw.is_virtualevent ? { is_virtualevent: true } : {}),
+      ...(raw.virtualevent_url ? { virtualevent_url: raw.virtualevent_url } : {}),
+      ...(superEventId
+        ? { super_event: { id: String(superEventId) } }
+        : {}),
+      ...(compactProvider ? { provider: compactProvider } : {}),
+      ...(compactInfoUrl ? { info_url: compactInfoUrl } : {}),
+      ...(compactOffers.length > 0 ? { offers: compactOffers } : {}),
+      ...(compactExtraLoc ? { location_extra_info: compactExtraLoc } : {}),
       location: raw.location
         ? {
             id:
@@ -791,17 +1016,22 @@ function compactLinkedEvent(raw, cityId, options = {}) {
               (normalizedPosition
                 ? `${cityId}:loc-${normalizedPosition.coordinates[0].toFixed(4)}-${normalizedPosition.coordinates[1].toFixed(4)}`
                 : `${cityId}:unmapped-${namespacedId}`),
-            name: raw.location.name || {},
-            street_address: raw.location.street_address || null,
-            address_locality: raw.location.address_locality || null,
+            name: compactLocalized(raw.location.name) || {},
+            ...(raw.location.street_address
+              ? { street_address: pickSingleLocalized(raw.location.street_address) }
+              : {}),
+            ...(raw.location.address_locality
+              ? {
+                  address_locality: pickSingleLocalized(
+                    raw.location.address_locality
+                  ),
+                }
+              : {}),
             position: normalizedPosition,
             ...(swapped ? { coordinate_swapped: true } : {}),
           }
         : null,
-      keywords: [
-        ...(Array.isArray(raw.keywords) ? raw.keywords : []),
-        ...(Array.isArray(raw.audience) ? raw.audience : []),
-      ].map((k) => ({ id: k.id || k['@id'] || '', name: k.name })),
+      ...(compactKeywords.length > 0 ? { keywords: compactKeywords } : {}),
       images: Array.isArray(raw.images)
         ? raw.images.slice(0, 1).map((img) => ({
             id: img.id,
@@ -809,13 +1039,21 @@ function compactLinkedEvent(raw, cityId, options = {}) {
               typeof img.url === 'string'
                 ? img.url.replace(/^http:\/\//i, 'https://')
                 : '',
-            photographer_name: img.photographer_name || null,
-            alt_text:
-              typeof img.alt_text === 'object' && img.alt_text !== null
-                ? img.alt_text.en || img.alt_text.fi || img.alt_text.sv || null
-                : img.alt_text || null,
+            ...(img.photographer_name
+              ? { photographer_name: img.photographer_name }
+              : {}),
+            ...(img.alt_text
+              ? {
+                  alt_text:
+                    typeof img.alt_text === 'object' && img.alt_text !== null
+                      ? img.alt_text.en ||
+                        img.alt_text.fi ||
+                        img.alt_text.sv ||
+                        undefined
+                      : img.alt_text,
+                }
+              : {}),
             license: img.license || 'event_only',
-            data_source: img.data_source || sourceDataLabel,
           }))
         : [],
     },
@@ -830,28 +1068,29 @@ function compactLinkedEvent(raw, cityId, options = {}) {
 export function consolidateRawSeriesOccurrences(
   events,
   now = new Date(),
-  maxEvents = MAX_CONSOLIDATED_EVENTS_PER_CITY
+  maxEvents = MAX_CONSOLIDATED_EVENTS_PER_CITY,
+  cityLabel = ''
 ) {
   const bySeries = new Map();
 
   for (const ev of events) {
     if (!ev || !ev.start_time) continue;
-    const parsedStart = new Date(ev.start_time);
-    if (Number.isNaN(parsedStart.getTime())) continue;
-    const parsedEnd = ev.end_time ? new Date(ev.end_time) : null;
+    const parsedStart = parseSyncTimestamp(ev.start_time, 'start');
+    if (!parsedStart) continue;
+    const parsedEnd = ev.end_time ? parseSyncTimestamp(ev.end_time, 'end') : null;
     const effectiveEnd =
-      parsedEnd && !Number.isNaN(parsedEnd.getTime()) && parsedEnd >= parsedStart
+      parsedEnd && parsedEnd >= parsedStart
         ? parsedEnd
         : new Date(parsedStart.getTime() + 2 * 3600 * 1000);
 
-    const titleKey = (
+    const rawTitle =
       ev.name?.fi ||
       ev.name?.en ||
       ev.name?.sv ||
-      ''
-    )
-      .trim()
-      .toLowerCase();
+      '';
+    if (isNonEventTitle(rawTitle)) continue;
+
+    const titleKey = rawTitle.trim().toLowerCase();
     const superId = ev.super_event?.['@id'] || ev.super_event?.id || '';
     const coords = ev.location?.position?.coordinates;
     const locKey = Array.isArray(coords)
@@ -908,23 +1147,43 @@ export function consolidateRawSeriesOccurrences(
   const consolidated = [];
 
   for (const item of bySeries.values()) {
-    item.occurrence_dates.sort(
-      (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
-    );
-    const chosen =
-      item.occurrence_dates.find((o) => new Date(o.end).getTime() >= nowMs) ||
-      item.occurrence_dates[0];
-    if (chosen) {
-      item.start_time = chosen.start;
-      item.end_time = chosen.end;
+    // Drop past occurrences; drop the entire series when no occurrence has end >= now (`BUG-02`, `DATA-01`)
+    const upcomingOccs = item.occurrence_dates
+      .filter((o) => {
+        const endDt = parseSyncTimestamp(o.end, 'end');
+        return endDt && endDt.getTime() >= nowMs;
+      })
+      .sort(
+        (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
+      );
+
+    if (upcomingOccs.length === 0) {
+      continue;
     }
+
+    const chosen = upcomingOccs[0];
+    item.occurrence_dates = upcomingOccs;
+    item.start_time = chosen.start;
+    item.end_time = chosen.end;
     consolidated.push(item);
   }
 
-  consolidated.sort(
-    (a, b) =>
-      new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
-  );
+  // Sort by next upcoming start (`Math.max(start, now)`) so multi-year ongoing exhibitions
+  // don't push out future dated events when capping (`DATA-01`)
+  consolidated.sort((a, b) => {
+    const aNext = Math.max(new Date(a.start_time).getTime(), nowMs);
+    const bNext = Math.max(new Date(b.start_time).getTime(), nowMs);
+    if (aNext !== bNext) return aNext - bNext;
+    const aDur = new Date(a.end_time).getTime() - new Date(a.start_time).getTime();
+    const bDur = new Date(b.end_time).getTime() - new Date(b.start_time).getTime();
+    return aDur - bDur;
+  });
+
+  if (consolidated.length > maxEvents) {
+    console.warn(
+      `[sync-feeds] ! Cap hit${cityLabel ? ` for ${cityLabel}` : ''}: keeping ${maxEvents} of ${consolidated.length} upcoming series.`
+    );
+  }
 
   return consolidated.slice(0, maxEvents);
 }
@@ -1152,11 +1411,58 @@ export function classifyEpEventCity(raw) {
   );
 }
 
+function computeFeedCoverageMeta(events, explicitHorizonEnd = null) {
+  const now = new Date();
+  const nowMs = now.getTime();
+  const todayKey = toHelsinkiDateKey(now);
+  let maxTimedMs = -Infinity;
+  let maxAnyMs = -Infinity;
+  const maxShortSpanMs = 35 * 24 * 3600 * 1000;
+
+  for (const ev of events) {
+    const occs =
+      Array.isArray(ev.occurrence_dates) && ev.occurrence_dates.length > 0
+        ? ev.occurrence_dates
+        : [{ start: ev.start_time, end: ev.end_time }];
+    for (const occ of occs) {
+      const s = occ.start ? new Date(occ.start).getTime() : NaN;
+      const e = occ.end ? new Date(occ.end).getTime() : s;
+      if (!Number.isFinite(s) || !Number.isFinite(e) || e < nowMs) continue;
+      if (e > maxAnyMs) maxAnyMs = e;
+      if (s > maxTimedMs) maxTimedMs = s;
+      if (e - s <= maxShortSpanMs && e > maxTimedMs) maxTimedMs = e;
+    }
+  }
+
+  const computedEnd = Number.isFinite(maxTimedMs)
+    ? toHelsinkiDateKey(new Date(maxTimedMs))
+    : Number.isFinite(maxAnyMs)
+      ? toHelsinkiDateKey(new Date(maxAnyMs))
+      : todayKey;
+
+  return {
+    coverageStart: todayKey,
+    coverageEnd:
+      explicitHorizonEnd && explicitHorizonEnd > computedEnd
+        ? explicitHorizonEnd
+        : computedEnd,
+  };
+}
+
 async function writeCityFeedPayload(cityId, convertedEvents, metaFields) {
+  const { coverageStart, coverageEnd } = computeFeedCoverageMeta(
+    convertedEvents,
+    metaFields.coverageEnd || null
+  );
   const payload = {
     meta: {
       count: convertedEvents.length,
       total_upstream: metaFields.totalUpstream ?? convertedEvents.length,
+      ...(typeof metaFields.cappedFrom === 'number'
+        ? { capped_from: metaFields.cappedFrom }
+        : {}),
+      coverage_start: metaFields.coverageStart || coverageStart,
+      coverage_end: coverageEnd,
       next: null,
       previous: null,
       generated_at: new Date().toISOString(),
@@ -1378,8 +1684,10 @@ export function convertHelloKuopioEventToLinkedEvent(ev) {
       typeof ev.end_date === 'string' && ev.end_date.trim()
         ? ev.end_date.trim().slice(0, 10)
         : startDay;
-    startIso = `${startDay}T00:00:00+02:00`;
-    endIso = `${endDay}T23:59:59+02:00`;
+    const sDt = parseSyncTimestamp(startDay, 'start');
+    const eDt = parseSyncTimestamp(endDay, 'end');
+    startIso = sDt ? sDt.toISOString() : null;
+    endIso = eDt ? eDt.toISOString() : null;
   } else if (typeof ev.utc_start_date === 'string' && ev.utc_start_date.trim()) {
     startIso = `${ev.utc_start_date.trim().replace(' ', 'T')}Z`;
     endIso =
@@ -1387,11 +1695,15 @@ export function convertHelloKuopioEventToLinkedEvent(ev) {
         ? `${ev.utc_end_date.trim().replace(' ', 'T')}Z`
         : new Date(new Date(startIso).getTime() + 2 * 3600 * 1000).toISOString();
   } else if (typeof ev.start_date === 'string' && ev.start_date.trim()) {
-    startIso = `${ev.start_date.trim().replace(' ', 'T')}+02:00`;
-    endIso =
+    const sDt = parseSyncTimestamp(ev.start_date.trim(), 'start');
+    const eDt =
       typeof ev.end_date === 'string' && ev.end_date.trim()
-        ? `${ev.end_date.trim().replace(' ', 'T')}+02:00`
-        : new Date(new Date(startIso).getTime() + 2 * 3600 * 1000).toISOString();
+        ? parseSyncTimestamp(ev.end_date.trim(), 'end')
+        : sDt
+          ? new Date(sDt.getTime() + 2 * 3600 * 1000)
+          : null;
+    startIso = sDt ? sDt.toISOString() : null;
+    endIso = eDt ? eDt.toISOString() : null;
   }
 
   if (!startIso || Number.isNaN(new Date(startIso).getTime())) {
@@ -1399,7 +1711,10 @@ export function convertHelloKuopioEventToLinkedEvent(ev) {
   }
 
   const title = decodeHtmlEntities(ev.title || 'Tapahtuma').trim();
-  const descriptionHtml = decodeHtmlEntities(ev.description || '').trim();
+  if (isNonEventTitle(title)) {
+    return null;
+  }
+  const descriptionHtml = compactDescriptionHtml(ev.description || '');
   const shortText =
     stripHtmlTags(ev.excerpt || '').slice(0, 240) ||
     stripHtmlTags(descriptionHtml).slice(0, 220) ||
@@ -1493,22 +1808,20 @@ export function convertHelloKuopioEventToLinkedEvent(ev) {
 
   return {
     id: `kuopio:${ev.id}`,
-    '@type': 'Event/LinkedEvent',
     data_source: 'kuopio',
     publisher: organizerName,
-    name: { fi: title, en: title },
-    short_description: { fi: shortText, en: shortText },
+    name: { fi: title },
+    short_description: { fi: shortText },
     description: {
       fi: descriptionHtml || `<p>${shortText}</p>`,
-      en: descriptionHtml || `<p>${shortText}</p>`,
     },
     start_time: startIso,
     end_time: endIso,
     all_day: Boolean(ev.all_day),
     is_virtualevent: Boolean(ev.is_virtual),
     virtualevent_url: ev.virtual_url || null,
-    provider: { fi: organizerName, en: organizerName },
-    info_url: { fi: infoUrl, en: infoUrl },
+    provider: { fi: organizerName },
+    info_url: { fi: infoUrl },
     offers,
     location: {
       id: venue?.id
@@ -1622,6 +1935,7 @@ export function convertSaloPostToLinkedEvent(post, now = new Date()) {
   if (!post || !post.id || !post.startDate) return null;
 
   const title = decodeHtmlEntities(String(post.title || 'Tapahtuma')).trim();
+  if (isNonEventTitle(title)) return null;
   const locText = decodeHtmlEntities(String(post.locationText || '')).trim();
   const locationNames = Array.isArray(post.locations)
     ? post.locations.map((l) => decodeHtmlEntities(String(l?.name || '')).trim()).filter(Boolean)
@@ -1732,11 +2046,10 @@ export function convertSaloPostToLinkedEvent(post, now = new Date()) {
 
   return {
     id: compoundId,
-    '@type': 'Event/LinkedEvent',
     data_source: 'salo',
     publisher: 'Salon Tapahtumat',
-    name: { fi: title, en: title },
-    short_description: { fi: shortDesc, en: shortDesc },
+    name: { fi: title },
+    short_description: { fi: shortDesc },
     description: {
       fi: `<p>${shortDesc}</p><p><a href="${permalink}">Katso tapahtuman tarkemmat tiedot Salon tapahtumakalenterista</a></p>`,
       en: `<p>${shortDesc}</p><p><a href="${permalink}">View full event details on Salo Event Calendar</a></p>`,
@@ -1744,17 +2057,16 @@ export function convertSaloPostToLinkedEvent(post, now = new Date()) {
     start_time: startDate.toISOString(),
     end_time: endDate.toISOString(),
     provider: { fi: 'Salon tapahtumakalenteri', en: 'Salo Event Calendar' },
-    info_url: { fi: permalink, en: permalink },
+    info_url: { fi: permalink },
     offers,
     location: {
       id: coordinates
         ? `salo:loc-${coordinates[0].toFixed(4)}-${coordinates[1].toFixed(4)}`
         : `salo:unmapped-${blogId}-${post.id}`,
-      name: { fi: venueName, en: venueName },
-      street_address: { fi: streetAddress, en: streetAddress },
+      name: { fi: venueName },
+      street_address: { fi: streetAddress },
       address_locality: {
         fi: locationNames[0] ? `${locationNames[0]}, Salo` : 'Salo',
-        en: 'Salo',
       },
       position: coordinates
         ? {
@@ -1767,7 +2079,6 @@ export function convertSaloPostToLinkedEvent(post, now = new Date()) {
       id: `salo:tax:${term.slug || term.name}`,
       name: {
         fi: decodeHtmlEntities(String(term.name || '')),
-        en: decodeHtmlEntities(String(term.name || '')),
       },
     })),
     images: imgUrl
@@ -1826,64 +2137,96 @@ function compactCapitalEvent(raw, cityId) {
 }
 
 async function syncCapitalCity(cityId) {
-  const collected = [];
-  const seenIds = new Set();
-  const maxPages = 3;
-  let totalUpstream = null;
+  const now = new Date();
+  const todayStr = toHelsinkiDateKey(now);
+  const endHorizon = addDaysToDateKey(todayStr, CAPITAL_HORIZON_DAYS);
+  const baseUrl = `https://api.hel.fi/linkedevents/v1/event/?division=${cityId}&include=location,keywords&start=today&end=${endHorizon}&sort=start_time&page_size=100`;
 
-  for (let page = 1; page <= maxPages; page++) {
-    const url = `https://api.hel.fi/linkedevents/v1/event/?division=${cityId}&include=location,keywords&start=now&sort=end_time&page_size=100&page=${page}`;
-    try {
-      const res = await fetch(url, { headers: { Accept: 'application/json' } });
-      if (!res.ok) break;
-      const json = await res.json();
-      if (typeof json.meta?.count === 'number' && totalUpstream === null) {
-        totalUpstream = json.meta.count;
-      }
-      if (!Array.isArray(json.data) || json.data.length === 0) break;
-      for (const item of json.data) {
-        if (!seenIds.has(item.id)) {
-          seenIds.add(item.id);
-          const compacted = compactCapitalEvent(item, cityId);
-          if (compacted) collected.push(compacted);
-        }
-      }
-      if (!json.meta?.next) break;
-    } catch (err) {
-      console.warn(
-        `[sync-feeds] Warning fetching page ${page} for ${cityId}:`,
-        err.message
-      );
-      break;
-    }
+  console.log(
+    `[sync-feeds] Fetching ${cityId} 6Aika events (${todayStr}..${endHorizon})...`
+  );
+  const { items, totalCount } = await fetchRegionalLinkedEvents(baseUrl, 40, 4);
+
+  const compacted = [];
+  for (const raw of items) {
+    const ev = compactCapitalEvent(raw, cityId);
+    if (ev) compacted.push(ev);
   }
 
-  if (collected.length < 5) {
+  const consolidated = consolidateRawSeriesOccurrences(
+    compacted,
+    now,
+    MAX_CONSOLIDATED_EVENTS_PER_CITY,
+    cityId
+  );
+
+  if (consolidated.length < 5) {
     throw new Error(
-      `Capital city ${cityId} returned too few events (${collected.length})`
+      `Capital city ${cityId} returned too few events (${consolidated.length})`
     );
   }
 
-  await writeCityFeedPayload(cityId, collected, {
-    totalUpstream: totalUpstream ?? collected.length,
+  await writeCityFeedPayload(cityId, consolidated, {
+    totalUpstream: totalCount || items.length,
+    coverageStart: todayStr,
     sourceCalendar: 'https://api.hel.fi/linkedevents/v1/',
     sourceId: 'hel_linkedevents',
   });
   console.log(
-    `[sync-feeds] ✓ ${cityId}: Saved ${collected.length} real 6Aika events (from ${totalUpstream ?? collected.length} upstream) -> public/feeds/${cityId}.json`
+    `[sync-feeds] ✓ ${cityId}: Saved ${consolidated.length} consolidated 6Aika series (from ${items.length} fetched / ${totalCount} upstream) -> public/feeds/${cityId}.json`
   );
-  return collected.length;
+  return consolidated.length;
 }
 
-async function ensureFallbackExists(cityId) {
-  const outPath = path.join(FEEDS_DIR, `${cityId}.json`);
+/**
+ * Validates that a committed fallback feed exists, is non-empty, AND is no older than
+ * `MAX_FALLBACK_AGE_MS` (3 days) (`TOOL-03`). Emits GitHub Actions annotations when
+ * falling back or failing due to stale data.
+ */
+export async function validateFallbackFreshness(
+  cityId,
+  now = new Date(),
+  feedsDir = FEEDS_DIR
+) {
+  const outPath = path.join(feedsDir, `${cityId}.json`);
   try {
     const raw = await fs.readFile(outPath, 'utf8');
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed.data) && parsed.data.length > 0;
+    if (!Array.isArray(parsed.data) || parsed.data.length === 0) {
+      return { valid: false, reason: 'empty fallback payload' };
+    }
+    const genRaw = parsed.meta?.generated_at;
+    const genMs = typeof genRaw === 'string' ? new Date(genRaw).getTime() : NaN;
+    if (!Number.isFinite(genMs)) {
+      console.error(
+        `::error file=public/feeds/${cityId}.json::Fallback feed for ${cityId} has no valid meta.generated_at timestamp`
+      );
+      return { valid: false, reason: 'missing meta.generated_at' };
+    }
+    const ageMs = now.getTime() - genMs;
+    if (ageMs > MAX_FALLBACK_AGE_MS) {
+      const ageDays = (ageMs / (24 * 3600 * 1000)).toFixed(1);
+      console.error(
+        `::error file=public/feeds/${cityId}.json::Fallback feed for ${cityId} is ${ageDays} days old (exceeds 3-day freshness limit)`
+      );
+      return {
+        valid: false,
+        reason: `stale fallback (${ageDays} days old > 3 days)`,
+      };
+    }
+    const ageHours = Math.max(0, ageMs / (3600 * 1000)).toFixed(1);
+    console.warn(
+      `::warning file=public/feeds/${cityId}.json::Upstream sync failed for ${cityId}; using committed fallback (${ageHours}h old)`
+    );
+    return { valid: true, reason: `fresh fallback (${ageHours}h old)` };
   } catch {
-    return false;
+    return { valid: false, reason: 'no existing fallback file' };
   }
+}
+
+async function ensureFallbackExists(cityId) {
+  const check = await validateFallbackFreshness(cityId);
+  return check.valid;
 }
 
 export async function syncAllFeeds() {

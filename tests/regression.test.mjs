@@ -1,5 +1,7 @@
 import { registerHooks } from 'node:module';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import fsPromises from 'node:fs/promises';
+import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import test from 'node:test';
@@ -26,6 +28,7 @@ registerHooks({
 const calendarUtils = await import('../src/utils/calendarUtils.ts');
 const linkedEventsClient = await import('../src/services/linkedEventsClient.ts');
 const licenseGuard = await import('../src/utils/licenseGuard.ts');
+const sanitizeHtml = await import('../src/utils/sanitizeHtml.ts');
 const { CITIES, CITY_LIST, SOURCE_REGISTRY } = await import(
   '../src/config/cities.ts'
 );
@@ -34,8 +37,11 @@ const syncFeeds = await import('../scripts/sync-feeds.mjs');
 const {
   isValidDateKey,
   parseDateKey,
+  toDateKey,
   doesEventOccurOnDate,
   resolveEventForDate,
+  hasUpcomingOrActiveOccurrence,
+  formatEventTimeLabel,
   buildEventIcsContent,
   buildGoogleCalendarUrl,
   isEventOnUpcomingWeekend,
@@ -51,15 +57,20 @@ const {
   groupEventsByVenue,
   validateAndNormalizeFinlandCoordinates,
   upgradeKnownLinkedEventsUrl,
+  fetchWithTimeout,
+  isCachedRecordFresh,
 } = linkedEventsClient;
 
-const { buildLicenseAttribution, getCitySourceAttribution } = licenseGuard;
+const { getCitySourceAttribution } = licenseGuard;
+const { enforceSafeAnchorAttributes } = sanitizeHtml;
 const {
   classifyKeskiSuomiEventCity,
   classifySatakuntaEventCity,
   classifyEpEventCity,
   convertHelloKuopioEventToLinkedEvent,
   convertSaloPostToLinkedEvent,
+  consolidateRawSeriesOccurrences,
+  validateFallbackFreshness,
 } = syncFeeds;
 
 test('Check 01 (Finding 03): Multi-day exhibition and overnight event match all overlapped calendar dates', () => {
@@ -81,8 +92,8 @@ test('Check 01 (Finding 03): Multi-day exhibition and overnight event match all 
     {
       id: 'turku:overnight-party',
       name: { fi: 'Late Night Club' },
-      start_time: new Date(2026, 9, 20, 23, 0, 0).toISOString(),
-      end_time: new Date(2026, 9, 21, 2, 0, 0).toISOString(),
+      start_time: '2026-10-20T23:00:00+03:00',
+      end_time: '2026-10-21T02:00:00+03:00',
       offers: [{ is_free: false, price: { fi: '15 €' } }],
     },
     'turku'
@@ -724,9 +735,10 @@ test('Check 17: Cancelled, deleted, and all-day events are handled accurately', 
   );
 });
 
-test('Check 18 (End-to-End 28-City Feed Integrity): Every synced static feed normalizes, consolidates, and passes coordinate + attribution invariants', () => {
+test('Check 18 (End-to-End 28-City Feed Integrity): Every synced static feed normalizes, consolidates, and passes coordinate + attribution + freshness invariants', () => {
   const feedsDir = fileURLToPath(new URL('../public/feeds', import.meta.url));
   let totalNormalizedEvents = 0;
+  let totalFeedBytes = 0;
 
   for (const city of CITY_LIST) {
     const feedPath = path.join(feedsDir, `${city.id}.json`);
@@ -735,6 +747,7 @@ test('Check 18 (End-to-End 28-City Feed Integrity): Every synced static feed nor
       `Missing static feed file for ${city.id}: ${feedPath}`
     );
 
+    totalFeedBytes += statSync(feedPath).size;
     const payload = JSON.parse(readFileSync(feedPath, 'utf-8'));
     assert.ok(
       payload && typeof payload === 'object' && Array.isArray(payload.data),
@@ -746,9 +759,13 @@ test('Check 18 (End-to-End 28-City Feed Integrity): Every synced static feed nor
       `Missing numeric meta.count for ${city.id}`
     );
 
+    const generatedNow = payload.meta?.generated_at
+      ? new Date(payload.meta.generated_at)
+      : new Date();
+
     const normalized = [];
     for (const raw of payload.data) {
-      const ev = normalizeLinkedEvent(raw, city.id);
+      const ev = normalizeLinkedEvent(raw, city.id, 0, undefined, generatedNow);
       if (!ev) continue;
 
       assert.ok(ev.id.length > 0, `Empty event id in ${city.id}`);
@@ -758,6 +775,10 @@ test('Check 18 (End-to-End 28-City Feed Integrity): Every synced static feed nor
           !Number.isNaN(ev.endTime.getTime()) &&
           ev.endTime.getTime() >= ev.startTime.getTime(),
         `Invalid timestamp range in ${city.id} (${ev.id})`
+      );
+      assert.ok(
+        hasUpcomingOrActiveOccurrence(ev, new Date(generatedNow.getTime() - 60_000)),
+        `Past-only event remained in synced feed ${city.id} (${ev.id})`
       );
 
       if (ev.coordinates !== null) {
@@ -794,7 +815,7 @@ test('Check 18 (End-to-End 28-City Feed Integrity): Every synced static feed nor
       normalized.push(ev);
     }
 
-    const consolidated = consolidateRecurringEvents(normalized);
+    const consolidated = consolidateRecurringEvents(normalized, generatedNow);
     const venueGroups = groupEventsByVenue(consolidated);
     assert.ok(
       consolidated.length <= normalized.length,
@@ -812,4 +833,248 @@ test('Check 18 (End-to-End 28-City Feed Integrity): Every synced static feed nor
     totalNormalizedEvents > 2000,
     `Expected >2000 normalized events across 28 cities, got ${totalNormalizedEvents}`
   );
+  assert.ok(
+    totalFeedBytes < 14 * 1024 * 1024,
+    `Expected compacted feed payloads (<14 MB), got ${(totalFeedBytes / (1024 * 1024)).toFixed(2)} MB`
+  );
+});
+
+test('Check 19 (BUG-02 & DATA-01): Ended series are dropped and active/upcoming series sort by next occurrence before cap', () => {
+  const refNow = new Date('2026-10-28T12:00:00Z');
+  const rawSeries = [
+    {
+      id: 'ks:past-only',
+      name: { fi: 'Ended Summer Show' },
+      start_time: '2026-06-10T10:00:00Z',
+      end_time: '2026-06-10T12:00:00Z',
+    },
+    {
+      id: 'ks:far-future',
+      name: { fi: 'December Gala' },
+      start_time: '2026-12-20T18:00:00Z',
+      end_time: '2026-12-20T21:00:00Z',
+    },
+    {
+      id: 'ks:tomorrow',
+      name: { fi: 'Tomorrow Gig' },
+      start_time: '2026-10-29T18:00:00Z',
+      end_time: '2026-10-29T21:00:00Z',
+    },
+  ];
+
+  const consolidated = consolidateRawSeriesOccurrences(rawSeries, refNow, 1);
+  assert.equal(consolidated.length, 1);
+  assert.equal(consolidated[0].id, 'ks:tomorrow');
+
+  const pastNormalized = normalizeLinkedEvent(
+    rawSeries[0],
+    'jyvaskyla',
+    0,
+    undefined,
+    refNow
+  );
+  assert.ok(pastNormalized);
+  assert.equal(hasUpcomingOrActiveOccurrence(pastNormalized, refNow), false);
+});
+
+test('Check 20 (BUG-05 & BUG-06): Timeout rejects with TimeoutError and offline-fallback cache records are never fresh', async () => {
+  const slowFetch = (_url, init) =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(init.signal.reason ?? new DOMException('Aborted', 'AbortError'));
+      });
+    });
+
+  await assert.rejects(
+    () => fetchWithTimeout('https://example.org/events', {}, 25, undefined, slowFetch),
+    (err) => err?.name === 'TimeoutError'
+  );
+
+  const callerAbort = new AbortController();
+  setTimeout(() => callerAbort.abort(), 10);
+  await assert.rejects(
+    () =>
+      fetchWithTimeout(
+        'https://example.org/events',
+        {},
+        500,
+        callerAbort.signal,
+        slowFetch
+      ),
+    (err) => err?.name === 'AbortError'
+  );
+
+  const nowMs = Date.now();
+  assert.equal(
+    isCachedRecordFresh({ source: 'offline-fallback', timestamp: nowMs }),
+    false
+  );
+  assert.equal(
+    isCachedRecordFresh({ source: 'live-api', timestamp: nowMs }),
+    true
+  );
+});
+
+test('Check 21 (BUG-07): Europe/Helsinki date math stays invariant across viewer time zones and date-only strings span one day', () => {
+  // 2026-07-15 23:30 in Helsinki (+03:00 EEST) is 2026-07-15T20:30:00Z
+  const lateHelsinkiInstant = new Date('2026-07-15T20:30:00Z');
+  assert.equal(toDateKey(lateHelsinkiInstant), '2026-07-15');
+
+  // 2026-07-16 00:30 in Helsinki (+03:00 EEST) is 2026-07-15T21:30:00Z (still July 15 in UTC & New York!)
+  const justAfterMidnightHelsinki = new Date('2026-07-15T21:30:00Z');
+  assert.equal(toDateKey(justAfterMidnightHelsinki), '2026-07-16');
+
+  const singleDateOnly = normalizeLinkedEvent(
+    {
+      id: 'kuopio:july15',
+      name: { fi: 'Heinäkuun toripäivä' },
+      start_time: '2026-07-15',
+      end_time: '2026-07-15',
+    },
+    'kuopio'
+  );
+  assert.ok(singleDateOnly);
+  assert.equal(doesEventOccurOnDate(singleDateOnly, '2026-07-14'), false);
+  assert.equal(doesEventOccurOnDate(singleDateOnly, '2026-07-15'), true);
+  assert.equal(doesEventOccurOnDate(singleDateOnly, '2026-07-16'), false);
+});
+
+test('Check 22 (DATA-02 & DATA-06): Pop-up false positives, dance->culture, word-bounded online detection, and season pass filtering', () => {
+  const popupCafe = {
+    id: 'turku:popup',
+    name: { fi: 'Pop up -kahvila ja kirppis' },
+    short_description: { fi: 'Pop-up myymälä puistossa' },
+    start_time: '2026-11-01T10:00:00Z',
+  };
+  assert.ok(!classifyTopics(popupCafe).includes('music'));
+
+  const dancePerformance = {
+    id: 'turku:dance',
+    name: { fi: 'Nykytanssiesitys: Valo' },
+    short_description: { fi: 'Tanssiteos näyttämöllä' },
+    start_time: '2026-11-01T18:00:00Z',
+  };
+  assert.equal(classifyTopic(dancePerformance), 'culture');
+
+  const teamsWebinar = normalizeLinkedEvent(
+    {
+      id: 'hel:webinar',
+      name: { fi: 'Teams-kokous asukkaille' },
+      short_description: { fi: 'Tilaisuus järjestetään etänä.' },
+      start_time: '2026-11-02T15:00:00Z',
+    },
+    'helsinki'
+  );
+  assert.ok(teamsWebinar);
+  assert.equal(teamsWebinar.isOnline, true);
+
+  const inPersonVr = normalizeLinkedEvent(
+    {
+      id: 'hel:vr-museum',
+      name: { fi: 'Tiimipäivä ja virtuaalitodellisuus museossa' },
+      start_time: '2026-11-02T15:00:00Z',
+      location: {
+        id: 'tprek:1',
+        name: { fi: 'Kaupunginmuseo' },
+        position: { type: 'Point', coordinates: [24.952, 60.169] },
+      },
+    },
+    'helsinki'
+  );
+  assert.ok(inPersonVr);
+  assert.equal(inPersonVr.isOnline, false);
+
+  const seasonPass = normalizeLinkedEvent(
+    {
+      id: 'turku:kotipassi',
+      name: { fi: 'Kotipassi 2026–2027' },
+      start_time: '2026-09-01T09:00:00Z',
+      end_time: '2027-05-31T18:00:00Z',
+    },
+    'turku'
+  );
+  assert.equal(seasonPass, null);
+});
+
+test('Check 23 (DATA-03 & DATA-04): Long-span exhibitions are labeled Ongoing (not LIVE) and export single-day calendar entries', () => {
+  const refNow = new Date('2026-10-28T12:00:00Z');
+  const longExhibition = normalizeLinkedEvent(
+    {
+      id: 'hel:long-exhib',
+      name: { fi: 'Vuosinäyttely' },
+      start_time: '2026-10-01T08:00:00Z',
+      end_time: '2027-02-15T16:00:00Z',
+    },
+    'helsinki',
+    0,
+    undefined,
+    refNow
+  );
+  assert.ok(longExhibition);
+  assert.equal(longExhibition.isLiveNow, false);
+  assert.equal(longExhibition.isOngoingLongSpan, true);
+
+  const label = formatEventTimeLabel(longExhibition, refNow);
+  assert.match(label, /^Ongoing · until /);
+  assert.match(label, /2027/);
+
+  const gcal = buildGoogleCalendarUrl(longExhibition, '2026-10-30', refNow);
+  assert.match(gcal, /dates=20261030%2F20261031|dates=20261030\/20261031/);
+
+  const ics = buildEventIcsContent(longExhibition, '2026-10-30', refNow);
+  assert.match(ics, /DTSTART;VALUE=DATE:20261030/);
+  assert.match(ics, /DTEND;VALUE=DATE:20261031/);
+});
+
+test('Check 24 (SEC-02 & TOOL-03): Description anchors enforce external target/rel and stale >3d fallbacks fail validation', async () => {
+  const makeMockAnchor = (href) => {
+    const attrs = new Map(href !== null ? [['href', href]] : []);
+    return {
+      tagName: 'A',
+      getAttribute: (k) => attrs.get(k) ?? null,
+      setAttribute: (k, v) => attrs.set(k, v),
+      removeAttribute: (k) => attrs.delete(k),
+      attrs,
+    };
+  };
+
+  const safeLink = makeMockAnchor('https://turku.fi/liput');
+  enforceSafeAnchorAttributes(safeLink);
+  assert.equal(safeLink.attrs.get('target'), '_blank');
+  assert.equal(safeLink.attrs.get('rel'), 'noopener noreferrer');
+
+  const jsLink = makeMockAnchor('javascript:alert(1)');
+  enforceSafeAnchorAttributes(jsLink);
+  assert.equal(jsLink.attrs.has('href'), false);
+
+  const relLink = makeMockAnchor('/internal-route');
+  enforceSafeAnchorAttributes(relLink);
+  assert.equal(relLink.attrs.has('href'), false);
+
+  const tmpDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'tarra-feeds-'));
+  try {
+    const now = new Date('2026-10-29T00:00:00Z');
+    await fsPromises.writeFile(
+      path.join(tmpDir, 'fresh.json'),
+      JSON.stringify({
+        meta: { count: 1, generated_at: '2026-10-28T12:00:00Z' },
+        data: [{ id: '1' }],
+      })
+    );
+    await fsPromises.writeFile(
+      path.join(tmpDir, 'stale.json'),
+      JSON.stringify({
+        meta: { count: 1, generated_at: '2026-10-20T00:00:00Z' },
+        data: [{ id: '1' }],
+      })
+    );
+
+    const freshCheck = await validateFallbackFreshness('fresh', now, tmpDir);
+    assert.equal(freshCheck.valid, true);
+
+    const staleCheck = await validateFallbackFreshness('stale', now, tmpDir);
+    assert.equal(staleCheck.valid, false);
+  } finally {
+    await fsPromises.rm(tmpDir, { recursive: true, force: true });
+  }
 });

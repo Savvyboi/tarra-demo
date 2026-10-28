@@ -10,8 +10,14 @@ import type {
   VenueStoryGroup,
 } from '../types/linkedEvents';
 import {
+  addCalendarDays,
+  hasUpcomingOrActiveOccurrence,
+  isAllDayInterval,
   isEventOccurringTonight,
   isEventOnUpcomingWeekend,
+  isLongSpanInterval,
+  isValidDateKey,
+  parseHelsinkiTimestamp,
   resolveEventOccurrence,
   toDateKey,
 } from '../utils/calendarUtils';
@@ -22,12 +28,14 @@ import {
   pickLocalizedText,
 } from '../utils/licenseGuard';
 
-const DB_NAME = 'tarra_linkedevents_cache_v4';
+const DB_NAME = 'tarra_linkedevents_cache_v5';
 const STORE_NAME = 'city_feeds';
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
-const FETCH_TIMEOUT_MS = 6500;
+export const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+export const FETCH_TIMEOUT_MS = 6500;
+const LIVE_HORIZON_DAYS = 21;
+const MAX_LIVE_API_PAGES = 6;
 
-interface CachedFeedRecord {
+export interface CachedFeedRecord {
   cacheKey: string;
   cityId: CityId;
   timestamp: number;
@@ -38,6 +46,31 @@ interface CachedFeedRecord {
 interface CacheLookupResult {
   record: CachedFeedRecord;
   isFresh: boolean;
+}
+
+/**
+ * Determines whether an IndexedDB cache record can be served as fresh (`BUG-06`).
+ * Records saved as `'offline-fallback'` are NEVER treated as fresh so reloads retry
+ * the live API and keep the offline banner visible until live data succeeds.
+ */
+export function isCachedRecordFresh(
+  record: Pick<CachedFeedRecord, 'source' | 'timestamp'>,
+  nowMs = Date.now()
+): boolean {
+  if (record.source === 'offline-fallback') {
+    return false;
+  }
+  return nowMs - record.timestamp <= CACHE_TTL_MS;
+}
+
+// In-memory normalized result cache per cacheKey (`PERF-03`)
+const memoryResultCache = new Map<
+  string,
+  { timestamp: number; result: CityEventsResult }
+>();
+
+export function clearEventClientMemoryCache(): void {
+  memoryResultCache.clear();
 }
 
 function openCacheDb(): Promise<IDBDatabase> {
@@ -73,7 +106,7 @@ async function readCachedFeed(
           resolve(null);
           return;
         }
-        const isFresh = Date.now() - record.timestamp <= CACHE_TTL_MS;
+        const isFresh = isCachedRecordFresh(record);
         resolve({ record, isFresh });
       };
       req.onerror = () => reject(req.error);
@@ -98,27 +131,53 @@ async function writeCachedFeed(record: CachedFeedRecord): Promise<void> {
   }
 }
 
-async function fetchWithTimeout(
+/**
+ * Fetches `url` with a distinct `TimeoutError` on timeout so caller cancellation
+ * (`AbortError` from `externalSignal`) is never confused with a slow network (`BUG-05`).
+ */
+export async function fetchWithTimeout(
   url: string,
   options: RequestInit = {},
   timeoutMs = FETCH_TIMEOUT_MS,
-  externalSignal?: AbortSignal
+  externalSignal?: AbortSignal,
+  fetchImpl: typeof fetch = fetch
 ): Promise<Response> {
+  let timedOut = false;
   const controller = new AbortController();
-  const onExternalAbort = () => controller.abort();
+  const onExternalAbort = () => {
+    controller.abort(
+      externalSignal?.reason ?? new DOMException('Request aborted', 'AbortError')
+    );
+  };
+
   if (externalSignal) {
     if (externalSignal.aborted) {
-      controller.abort();
+      onExternalAbort();
     } else {
       externalSignal.addEventListener('abort', onExternalAbort, { once: true });
     }
   }
-  const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+
+  const timer = globalThis.setTimeout(() => {
+    timedOut = true;
+    controller.abort(
+      new DOMException(`Request timed out after ${timeoutMs}ms`, 'TimeoutError')
+    );
+  }, timeoutMs);
+
   try {
-    return await fetch(url, {
+    return await fetchImpl(url, {
       ...options,
       signal: controller.signal,
     });
+  } catch (err) {
+    if (timedOut && !externalSignal?.aborted) {
+      throw new DOMException(
+        `Request timed out after ${timeoutMs}ms`,
+        'TimeoutError'
+      );
+    }
+    throw err;
   } finally {
     globalThis.clearTimeout(timer);
     if (externalSignal) {
@@ -127,16 +186,92 @@ async function fetchWithTimeout(
   }
 }
 
+function isCallerAbort(err: unknown, externalSignal?: AbortSignal): boolean {
+  if (externalSignal?.aborted) return true;
+  if (externalSignal) return false;
+  return (err as { name?: string })?.name === 'AbortError';
+}
+
+// Finnish YSO ontology keyword mappings (`DATA-02`)
+const YSO_CATEGORY_MAP: Record<string, Exclude<TopicCategory, 'all'>> = {
+  // Music
+  p1808: 'music', // musiikki
+  p11185: 'music', // konsertit
+  p20421: 'music', // musiikkiklubit
+  p4484: 'music', // jazz
+  p29932: 'music', // elävä musiikki
+  p1882: 'music', // laulu
+  p2841: 'music', // ooppera
+  p10405: 'music', // popmusiikki
+  p3067: 'music', // rock
+  p13050: 'music', // klassinen musiikki
+  p15520: 'music', // kuoromusiikki
+  // Culture & Performing/Visual Arts (including dance = yso:p1278)
+  p360: 'culture', // kulttuuritapahtumat
+  p5121: 'culture', // näyttelyt
+  p2625: 'culture', // teatteri
+  p2850: 'culture', // esittävä taide
+  p2739: 'culture', // kuvataide
+  p4934: 'culture', // museot
+  p2787: 'culture', // kirjastot
+  p1278: 'culture', // tanssi
+  p10218: 'culture', // nykytanssi
+  p16327: 'culture', // elokuva
+  p14004: 'culture', // keskustelutilaisuudet
+  p15875: 'culture', // luennot
+  p2149: 'culture', // opastus
+  // Sports & Fitness
+  p916: 'sports', // liikunta
+  p965: 'sports', // urheilu
+  p1963: 'sports', // liikuntatapahtumat
+  p6409: 'sports', // jalkapallo
+  p12687: 'sports', // jääkiekko
+  p3927: 'sports', // jooga
+  p8783: 'sports', // kuntoilu
+  p26619: 'sports', // ryhmäliikunta
+  // Family & Youth
+  p4354: 'family', // lapset
+  p11617: 'family', // nuoret
+  p4363: 'family', // perheet
+  p16485: 'family', // koululaiset
+  p15937: 'family', // vauvat
+  p20513: 'family', // lapsiperheet
+  // Food & Markets
+  p3670: 'food', // ruoka
+  p2824: 'food', // markkinat
+  p5529: 'food', // myyjäiset
+  p9062: 'food', // kahvilat
+  p10037: 'food', // ravintolat
+  p6062: 'food', // ruokakulttuuri
+  // Nature & Outdoors
+  p13084: 'nature', // luonto
+  p2771: 'nature', // ulkoilu
+  p1103: 'nature', // retkeily
+  p8109: 'nature', // puistot
+  p25261: 'nature', // luontoretket
+};
+
 /**
- * Classifies an event into one or more TopicCategories using upstream taxonomy keywords first,
- * followed by word-boundary-aware Finnish/Swedish/English token matching (Finding 18).
+ * Detects season passes, ticket bundles, and gift cards so non-events are skipped (`DATA-06`).
+ */
+export function isNonEventListingTitle(title: string): boolean {
+  if (!title) return false;
+  return /(?<!\p{L})(?:kausikortti|kausikortit|kotipassi|sarjakortti|lahjakortti|vuosikortti|season\s+ticket|season\s+pass)(?!\p{L})/iu.test(
+    title
+  );
+}
+
+/**
+ * Classifies an event into one or more TopicCategories using upstream YSO keyword IDs first,
+ * followed by Unicode-boundary-aware (`\p{L}`) Finnish/Swedish/English token matching (`DATA-02`).
  */
 export function classifyTopics(
   raw: RawLinkedEvent
 ): Array<Exclude<TopicCategory, 'all'>> {
   const title = pickLocalizedText(raw.name, '').toLowerCase();
   const shortDesc = pickLocalizedText(raw.short_description, '').toLowerCase();
-  const kwText = (raw.keywords || [])
+  const keywords = raw.keywords || [];
+  const kwText = keywords
     .map((k) => `${k.id || ''} ${pickLocalizedText(k.name, '')}`)
     .join(' ')
     .toLowerCase();
@@ -150,13 +285,26 @@ export function classifyTopics(
     }
   };
 
+  // 1. Upstream YSO keyword IDs (`yso:pXXXX`)
+  for (const kw of keywords) {
+    const rawId = `${kw.id || ''} ${kw['@id'] || ''}`;
+    const ysoMatches = rawId.matchAll(/yso:(p\d+)/gi);
+    for (const m of ysoMatches) {
+      const code = m[1].toLowerCase();
+      const mapped = YSO_CATEGORY_MAP[code];
+      if (mapped) {
+        addCategory(mapped);
+      }
+    }
+  }
+
   const isGuidedTourOrExhibition =
-    /(\bkierros\b|\bkierrokset\b|erikoiskierros|kummituskierros|kävelykierros|teatterikierros\w*|\bopastus\b|\bopastettu\b|guided tour|true crime|\bnäyttely\w*|\bexhibition\w*|\bmuseo\w*|\bmuseum\w*|\blukupiiri\b|\bkirjakerho\b|\bluento\b|\blecture\b)/i.test(
+    /(?<!\p{L})(?:kierros|kierrokset|erikoiskierros|kummituskierros|kävelykierros|teatterikierros\p{L}*|opastus|opastettu|näyttelyopastu\p{L}*|guided\s+tour|true\s+crime|näyttely\p{L}*|exhibition\p{L}*|museo\p{L}*|museum\p{L}*|lukupiiri|kirjakerho|luento\p{L}*|lecture\p{L}*|kirppis\p{L}*|kirpputori\p{L}*|second\s*hand)(?!\p{L})/iu.test(
       fullHaystack
     );
 
   const isClassicalOrConcert =
-    /(\bbarokk\w*|\bbarokin\b|\bbaroque\b|\bsinfonia\w*|\bsymphon\w*|\borkesteri\w*|\borchestra\b|\bkamarimusiik\w*|\bkonsert\w*|\bconcert\w*|\bresitaali\w*|\bkuoro\w*|\bchoir\b|\booppera\w*|\bopera\b)/i.test(
+    /(?<!\p{L})(?:barokk\p{L}*|barokin|baroque|sinfonia\p{L}*|symphon\p{L}*|orkesteri\p{L}*|orchestra|kamarimusiik\p{L}*|konsert\p{L}*|concert\p{L}*|resitaali\p{L}*|kuoro\p{L}*|choir|ooppera\p{L}*|opera)(?!\p{L})/iu.test(
       fullHaystack
     );
 
@@ -168,59 +316,75 @@ export function classifyTopics(
     addCategory('culture');
   }
 
-  // Music & Gigs (word-boundary aware so "miljoonakeikka" never matches "\bkeikka\b")
+  // Music & Gigs — Unicode-aware boundaries; excludes "pop up" / "pop-up" / "popcorn" / "pop art" (`DATA-02`)
   if (
-    /(\bmusiik\w*|\bmusic\b|\bkonsert\w*|\bconcert\w*|\bgigs?\b|\bjazz\w*|\brock\b|\bpop\b|\bsinfonia\w*|\bsymphon\w*|\bchoir\b|\bkuoro\w*|\bkeikka\b|\bkeikat\b|\bsynth\w*|\bvinyl\b|\bopera\b|\booppera\w*|\bkaraoke\w*|\bswing\w*|\bbarokk\w*|\bbarokin\b|\bbaroque\b|\bblues\b|\bmetal\b|\bpunk\b|\bfolk\b|\blive music\b)/i.test(
+    /(?<!\p{L})(?:musiik\p{L}*|music|konsert\p{L}*|concert\p{L}*|gigs?|jazz\p{L}*|rock|popmusiik\p{L}*|suomipop|indiepop|synthpop|electropop|pop(?!\s*(?:[-–]\s*|\s+)(?:up|corn|art|taide))|sinfonia\p{L}*|symphon\p{L}*|choir|kuoro\p{L}*|keikka|keikat|synth\p{L}*|vinyl|opera|ooppera\p{L}*|karaoke\p{L}*|swing\p{L}*|barokk\p{L}*|barokin|baroque|blues|metal|punk|folk|live\s+music)(?!\p{L})/iu.test(
       fullHaystack
     ) &&
-    !/miljoonakeikka/i.test(title)
+    !/miljoonakeikka/iu.test(title)
   ) {
     addCategory('music');
   }
 
-  // Nightlife & Clubs (strictly club/DJ/party/nightlife tokens; never bare "bar" inside "barokin" or book clubs)
+  // Nightlife & Clubs
   if (
-    /(\byöelämä\w*|\byökerho\w*|\bclubbing\b|\bnightlife\b|\bdj\b|\bdj-ilta\b|\bbileet\b|\bafterglow\b|\bafterparty\b|\brave\b|\btechno\b|\bdisco\b|\bdisko\b|\bklubi-ilta\b|\bclub night\b)/i.test(
+    /(?<!\p{L})(?:yöelämä\p{L}*|yökerho\p{L}*|clubbing|nightlife|dj|dj-ilta|bileet|afterglow|afterparty|rave|techno|disco|disko|klubi-ilta|club\s+night)(?!\p{L})/iu.test(
       fullHaystack
     ) &&
     !isClassicalOrConcert &&
-    !/kirjakerho|lukupiiri|business club/i.test(title)
+    !/kirjakerho|lukupiiri|business\s+club/iu.test(title)
   ) {
     addCategory('nightlife');
   }
 
   // Food & Markets
   if (
-    /(\bruoka\w*|\bfood\b|\bmarkets?\b|\bmarkkinat\b|\bmyyjäiset\b|\bkahvila\w*|\bcafe\b|\bwine\b|\bviini\w*|\bpanimo\w*|\bstreet food\b|\bglögi\w*|\btasting\b|\bravintola\w*|\bcooking\b|\bbrunssi\w*|\bbrunch\b)/i.test(
+    /(?<!\p{L})(?:ruoka\p{L}*|food|markets?|markkinat|myyjäiset|kahvila\p{L}*|cafe|wine|viini\p{L}*|panimo\p{L}*|street\s+food|glögi\p{L}*|tasting|ravintola\p{L}*|cooking|brunssi\p{L}*|brunch)(?!\p{L})/iu.test(
       fullHaystack
     )
   ) {
     addCategory('food');
   }
 
+  // Fitness dance vs Performing dance (`DATA-02`)
+  const isFitnessDance =
+    /(?<!\p{L})(?:tanssiliikun\p{L}*|tanssijumppa\p{L}*|zumba\p{L}*|bailatino\p{L}*|lavistanssi\p{L}*)(?!\p{L})/iu.test(
+      fullHaystack
+    );
+  const isPerformingDance =
+    !isFitnessDance &&
+    /(?<!\p{L})(?:tanssiesity\p{L}*|nykytanssi\p{L}*|tanssiteatteri\p{L}*|baletti\p{L}*|ballet|koreografi\p{L}*|tanssi\p{L}*|dance)(?!\p{L})/iu.test(
+      fullHaystack
+    );
+
+  if (isPerformingDance) {
+    addCategory('culture');
+  }
+
   // Sports & Action
   if (
-    /(\bliikunta\w*|\burheilu\w*|\bsports?\b|\bspectator sports\b|\bcompetitions\b|\bfitness\b|\bkuntosali\w*|\bgym\b|\bjuoksu\w*|\bjooga\w*|\byoga\b|\bhockey\b|\bjääkiekko\w*|\brunkosarja\b|\bilves\b|\btappara\b|\bkärpät\b|\bkiipeily\w*|\bboulder\w*|\bbasketball\b|\bkoripallo\w*|\buinti\w*|\bvesijumppa\w*|\btuoli-?jumppa\w*|\bjumppa\w*|\btanssi\w*|\bdance\b)/i.test(
-      fullHaystack
-    ) &&
-    !/business club/i.test(title)
+    (isFitnessDance ||
+      /(?<!\p{L})(?:liikunta\p{L}*|urheilu\p{L}*|sports?|spectator\s+sports|competitions|fitness|kuntosali\p{L}*|gym|juoksu\p{L}*|jooga\p{L}*|yoga|hockey|jääkiekko\p{L}*|runkosarja|ilves|tappara|kärpät|kiipeily\p{L}*|boulder\p{L}*|basketball|koripallo\p{L}*|uinti\p{L}*|vesijumppa\p{L}*|tuoli-?jumppa\p{L}*|jumppa\p{L}*)(?!\p{L})/iu.test(
+        fullHaystack
+      )) &&
+    !/business\s+club/iu.test(title)
   ) {
     addCategory('sports');
   }
 
   // Nature & Outdoors
   if (
-    /(\bluonto\w*|\bnature\b|\bpuisto\w*|\bpark\b|\bulkoilu\w*|\boutdoor\w*|\bretki\b|\bretkeily\w*|\bexcursion\b|\bvaellus\w*|\baurora\b|\brevontul\w*|\brantareitti\b|\bsaaristo\w*|\bsadonkorjuu\w*)/i.test(
+    /(?<!\p{L})(?:luonto\p{L}*|nature|puisto\p{L}*|park|ulkoilu\p{L}*|outdoor|retki|retkeily\p{L}*|excursion|vaellus\p{L}*|aurora|revontul\p{L}*|rantareitti|saaristo\p{L}*|sadonkorjuu\p{L}*)(?!\p{L})/iu.test(
       fullHaystack
     ) &&
-    !/teatterikierros|kummituskierros|true crime/i.test(text)
+    !/teatterikierros|kummituskierros|true\s+crime/iu.test(text)
   ) {
     addCategory('nature');
   }
 
   // Family & Youth
   if (
-    /(\bperhe\w*|\bfamily\b|\bkids and family\b|\bkids?\b|\blapsille\b|\blasten\b|\blapset\b|\bchildren\b|\bnuorille\b|\bnuorten\b|\byouths?\b|\btaapero\w*|\bvauva\w*|\bleikkipuisto\w*|\bmuumi\w*|\bmoomin\w*|\bsatutunti\w*|\bsatutuokio\w*|\bkoululais\w*|\bvanhempainilta\b)/i.test(
+    /(?<!\p{L})(?:perhe\p{L}*|family|kids\s+and\s+family|kids?|lapsille|lasten|lapset|children|nuorille|nuorten|youths?|taapero\p{L}*|vauva\p{L}*|leikkipuisto\p{L}*|muumi\p{L}*|moomin\p{L}*|satutunti\p{L}*|satutuokio\p{L}*|koululais\p{L}*|vanhempainilta)(?!\p{L})/iu.test(
       fullHaystack
     )
   ) {
@@ -229,7 +393,7 @@ export function classifyTopics(
 
   // Culture & Theatre explicit fallback
   if (
-    /(\bkulttuuri\w*|\bculture\b|\bteatteri\w*|\btheat(?:er|re)\b|\bvisual arts\b|\bkuvataide\w*|\bperformance\b|\bsirkus\b|\bcircus\b|\bcomedy\b|\bkomedia\w*|\belokuva\w*|\bfilm\b|\bkirjasto\w*|\blibrary\b)/i.test(
+    /(?<!\p{L})(?:kulttuuri\p{L}*|culture|teatteri\p{L}*|theat(?:er|re)|visual\s+arts|kuvataide\p{L}*|performance|sirkus|circus|comedy|komedia\p{L}*|elokuva\p{L}*|film|kirjasto\p{L}*|library)(?!\p{L})/iu.test(
       fullHaystack
     )
   ) {
@@ -304,7 +468,7 @@ export function evaluateEventPrice(raw: RawLinkedEvent): {
 
     if (rawPriceText) {
       const isZeroPrice =
-        /^(0\s*€|0,00\s*€|vapaa\s*pääsy|maksuton|ilmainen|free|free\s*entry)$/i.test(
+        /^(0\s*€|0,00\s*€|vapaa\s*pääsy|maksuton|ilmainen|free|free\s*entry)$/iu.test(
           rawPriceText
         );
       if (isZeroPrice && offer.is_free !== false) {
@@ -320,8 +484,6 @@ export function evaluateEventPrice(raw: RawLinkedEvent): {
     if (offer.is_free === false) {
       hasExplicitPaid = true;
     } else if (offer.is_free === true) {
-      // Guard against legacy static Localhub feeds where `!page.hasPrice` was converted
-      // into `{ is_free: true, price: null }` even for Lippu.fi / unknown-price events
       const isLegacyLocalhubEvent =
         raw.data_source === 'turku' ||
         raw.data_source === 'tampere' ||
@@ -330,7 +492,6 @@ export function evaluateEventPrice(raw: RawLinkedEvent): {
         if (hasPaidVendorLink) {
           hasExplicitPaid = true;
         }
-        // Leave hasExplicitFree false when price was null in legacy Localhub conversion
       } else {
         hasExplicitFree = true;
       }
@@ -392,8 +553,7 @@ export function upgradeKnownLinkedEventsUrl(
 }
 
 /**
- * Decodes common HTML entities in event titles and double-encoded descriptions
- * (e.g., EP Kalenteri `&lt;h2&gt;`, WordPress `&#8211;`).
+ * Decodes common HTML entities in event titles and double-encoded descriptions.
  */
 export function decodeHtmlEntities(input: string): string {
   if (!input || !input.includes('&')) return input;
@@ -422,8 +582,7 @@ export function decodeHtmlEntities(input: string): string {
 
 /**
  * Validates venue coordinates against Finland's geographic bounding box
- * (lon 18.0..32.5, lat 59.0..70.5) and corrects swapped [lat, lon] pairs
- * observed in upstream feeds such as EP Kalenteri.
+ * (lon 18.0..32.5, lat 59.0..70.5) and corrects swapped [lat, lon] pairs.
  */
 export function validateAndNormalizeFinlandCoordinates(
   rawCoords: unknown
@@ -459,6 +618,42 @@ export function validateAndNormalizeFinlandCoordinates(
 }
 
 /**
+ * Detects online/virtual events with Unicode-aware boundaries (`DATA-02`),
+ * avoiding false matches on bare English words like "teams" or "stream" in titles.
+ */
+export function detectIsOnlineEvent(raw: RawLinkedEvent): boolean {
+  if (raw.is_virtualevent || raw.virtualevent_url) return true;
+  const locId = (raw.location?.id || '').toLowerCase();
+  if (locId.includes('internet') || locId.includes('virtual')) return true;
+
+  const rawLocName = pickLocalizedText(raw.location?.name, '').trim();
+  const rawStreet = pickLocalizedText(raw.location?.street_address, '').trim();
+  const rawExtra = pickLocalizedText(raw.location_extra_info, '').trim();
+  const title = pickLocalizedText(raw.name, '').trim();
+
+  const locationContext = `${rawLocName} ${rawStreet} ${rawExtra}`;
+  const fullContext = `${locationContext} ${title}`;
+
+  if (
+    /^(?:microsoft\s+teams|teams|zoom|discord|google\s+meet|youtube(?:\s+live)?|verkossa|online|etänä)$/iu.test(
+      rawLocName
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    /(?<!\p{L})(?:verkossa|verkkotapahtuma\p{L}*|verkkoluento\p{L}*|online|etänä|etätapahtuma\p{L}*|etäyhtey\p{L}*|webinaari\p{L}*|webinar\p{L}*|livestream\p{L}*|live-stream\p{L}*|striimi\p{L}*|suoratoisto\p{L}*|microsoft\s+teams|teams-(?:kokou\p{L}*|tapahtuma\p{L}*|luento\p{L}*|webinaari\p{L}*|linjoil\p{L}*|link\p{L}*)|teamsissa|teamsin\s+kautta|zoom-(?:kokou\p{L}*|luento\p{L}*|tapahtuma\p{L}*|webinaari\p{L}*)|zoomissa)(?!\p{L})/iu.test(
+      fullContext
+    )
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Extracts real venue coordinates when provided by the source and rejects missing or
  * synthetically offset city-center coordinates (Finding 07).
  */
@@ -470,20 +665,10 @@ function extractGenuineCoordinates(
   hasExactCoordinates: boolean;
   isOnline: boolean;
 } {
-  const title = pickLocalizedText(raw.name, '');
   const rawLocName = pickLocalizedText(raw.location?.name, '');
   const rawStreet = pickLocalizedText(raw.location?.street_address, '');
-  const rawExtra = pickLocalizedText(raw.location_extra_info, '');
   const locId = raw.location?.id || '';
-
-  const isOnline =
-    Boolean(raw.is_virtualevent) ||
-    Boolean(raw.virtualevent_url) ||
-    locId.includes('internet') ||
-    locId.includes('virtual') ||
-    /\b(verkossa|verkkotapahtuma|online|etänä|etätapahtuma|webinaari|webinar|livestream|stream|teams|zoom)\b/i.test(
-      `${rawLocName} ${rawStreet} ${rawExtra} ${title}`
-    );
+  const isOnline = detectIsOnlineEvent(raw);
 
   const { coordinates: validCoords } = validateAndNormalizeFinlandCoordinates(
     raw.location?.position?.coordinates
@@ -495,7 +680,6 @@ function extractGenuineCoordinates(
   const [lon, lat] = validCoords;
   const cityNameLower = CITIES[cityId].name.toLowerCase();
 
-  // Detect legacy synthetic coordinates generated around the city center when address was just the city name
   if (
     locId.startsWith(`${cityId}:loc-`) &&
     rawLocName.trim().toLowerCase() === cityNameLower &&
@@ -512,9 +696,9 @@ function extractGenuineCoordinates(
 }
 
 /**
- * Recomputes temporal flags (`isLiveNow`, `isStartingSoon`, `isTonight`, `isThisWeekend`, `heatWeight`)
- * and representative `startTime`/`endTime`/`dateKey` against `now` and optional `selectedDate`
- * (Findings 04, 10, 11, 12).
+ * Recomputes temporal flags (`isLiveNow`, `isOngoingLongSpan`, `isStartingSoon`, `isTonight`,
+ * `isThisWeekend`, `heatWeight`) and representative `startTime`/`endTime`/`dateKey` against `now`
+ * and optional `selectedDate` (`DATA-03`, `BUG-07`).
  */
 export function refreshEventTemporalState(
   event: NormalizedEvent,
@@ -547,9 +731,20 @@ export function refreshEventTemporalState(
     now
   );
 
+  // Only timed events <= 24h (non-all-day) get the pulsing LIVE badge (`DATA-03`)
   const isLiveNow = occurrences.some(
-    (o) => nowMs >= o.start.getTime() && nowMs <= o.end.getTime()
+    (o) =>
+      !isLongSpanInterval(o.start, o.end) &&
+      !isAllDayInterval(o.start, o.end, event.raw?.all_day) &&
+      nowMs >= o.start.getTime() &&
+      nowMs <= o.end.getTime()
   );
+
+  const isOngoingLongSpan =
+    !isLiveNow &&
+    occurrences.some(
+      (o) => nowMs >= o.start.getTime() && nowMs <= o.end.getTime()
+    );
 
   const isStartingSoon =
     !isLiveNow &&
@@ -569,9 +764,11 @@ export function refreshEventTemporalState(
       ? 0.85
       : isTonight
         ? 0.68
-        : Math.abs(diffFromStartHours) < 24
-          ? 0.5
-          : 0.38;
+        : isOngoingLongSpan
+          ? 0.45
+          : Math.abs(diffFromStartHours) < 24
+            ? 0.5
+            : 0.38;
 
   return {
     ...event,
@@ -580,6 +777,7 @@ export function refreshEventTemporalState(
     dateKey: toDateKey(activeOcc.start),
     infoUrl: activeOcc.infoUrl || event.infoUrl,
     isLiveNow,
+    isOngoingLongSpan,
     isStartingSoon,
     isTonight,
     isThisWeekend,
@@ -595,6 +793,14 @@ export function normalizeLinkedEvent(
   now: Date = new Date()
 ): NormalizedEvent | null {
   if (!raw || !raw.id || raw.deleted === true) return null;
+
+  const baseTitle = decodeHtmlEntities(
+    pickLocalizedText(raw.name, 'Untitled Event')
+  );
+  // Skip season tickets / gift cards / passes (`DATA-06`)
+  if (isNonEventListingTitle(baseTitle)) {
+    return null;
+  }
 
   const { coordinates, hasExactCoordinates, isOnline } =
     extractGenuineCoordinates(raw, cityId);
@@ -623,27 +829,36 @@ export function normalizeLinkedEvent(
   if (Array.isArray(raw.occurrence_dates) && raw.occurrence_dates.length > 0) {
     for (const occ of raw.occurrence_dates) {
       if (!occ?.start) continue;
-      const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(occ.start.trim());
-      const s = new Date(
-        isDateOnly ? `${occ.start.trim()}T00:00:00+02:00` : occ.start
-      );
-      if (Number.isNaN(s.getTime())) continue;
-      const parsedEnd = occ.end
-        ? new Date(
-            /^\d{4}-\d{2}-\d{2}$/.test(occ.end.trim())
-              ? `${occ.end.trim()}T23:59:59+02:00`
-              : occ.end
-          )
+      const trimmedOccStart = occ.start.trim();
+      const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmedOccStart);
+      const s = parseHelsinkiTimestamp(trimmedOccStart, 'start');
+      if (!s) continue;
+
+      const trimmedOccEnd = occ.end?.trim() || '';
+      const isEndDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmedOccEnd);
+      const parsedEnd = trimmedOccEnd
+        ? parseHelsinkiTimestamp(trimmedOccEnd, 'end')
         : null;
-      const e =
-        parsedEnd && !Number.isNaN(parsedEnd.getTime()) && parsedEnd >= s
-          ? parsedEnd.getTime() === s.getTime() && (raw.all_day || isDateOnly)
-            ? new Date(s.getTime() + 24 * 3600 * 1000 - 1000)
-            : parsedEnd
-          : new Date(
-              s.getTime() +
-                (raw.all_day || isDateOnly ? 24 * 3600 * 1000 - 1000 : 2 * 3600 * 1000)
-            );
+
+      let e: Date;
+      if (parsedEnd && parsedEnd >= s) {
+        if (
+          parsedEnd.getTime() === s.getTime() &&
+          (raw.all_day || isDateOnly || isEndDateOnly)
+        ) {
+          e =
+            parseHelsinkiTimestamp(toDateKey(s), 'end') ||
+            new Date(s.getTime() + 24 * 3600 * 1000 - 1000);
+        } else {
+          e = parsedEnd;
+        }
+      } else if (raw.all_day || isDateOnly) {
+        e =
+          parseHelsinkiTimestamp(toDateKey(s), 'end') ||
+          new Date(s.getTime() + 24 * 3600 * 1000 - 1000);
+      } else {
+        e = new Date(s.getTime() + 2 * 3600 * 1000);
+      }
 
       const occUrl = pickLocalizedText(occ.info_url, '') || defaultInfoUrl;
       occurrenceDates.push({
@@ -663,39 +878,42 @@ export function normalizeLinkedEvent(
     occurrenceDates.sort((a, b) => a.start.getTime() - b.start.getTime());
     const upcoming =
       occurrenceDates.find((o) => o.end.getTime() >= now.getTime()) ||
-      occurrenceDates[0];
+      occurrenceDates[occurrenceDates.length - 1];
     startTime = upcoming.start;
     endTime = upcoming.end;
   } else if (raw.start_time) {
     const trimmedStart = raw.start_time.trim();
     const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmedStart);
-    const parsedStart = new Date(
-      isDateOnly ? `${trimmedStart}T00:00:00+02:00` : trimmedStart
-    );
-    if (Number.isNaN(parsedStart.getTime())) {
+    const parsedStart = parseHelsinkiTimestamp(trimmedStart, 'start');
+    if (!parsedStart) {
       return null;
     }
     startTime = parsedStart;
+
     const trimmedEnd = raw.end_time?.trim() || '';
+    const isEndDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmedEnd);
     const parsedEnd = trimmedEnd
-      ? new Date(
-          /^\d{4}-\d{2}-\d{2}$/.test(trimmedEnd)
-            ? `${trimmedEnd}T23:59:59+02:00`
-            : trimmedEnd
-        )
+      ? parseHelsinkiTimestamp(trimmedEnd, 'end')
       : null;
-    endTime =
-      parsedEnd && !Number.isNaN(parsedEnd.getTime()) && parsedEnd >= startTime
-        ? parsedEnd.getTime() === startTime.getTime() &&
-          (raw.all_day || isDateOnly)
-          ? new Date(startTime.getTime() + 24 * 3600 * 1000 - 1000)
-          : parsedEnd
-        : new Date(
-            startTime.getTime() +
-              (raw.all_day || isDateOnly
-                ? 24 * 3600 * 1000 - 1000
-                : 2 * 3600 * 1000)
-          );
+
+    if (parsedEnd && parsedEnd >= startTime) {
+      if (
+        parsedEnd.getTime() === startTime.getTime() &&
+        (raw.all_day || isDateOnly || isEndDateOnly)
+      ) {
+        endTime =
+          parseHelsinkiTimestamp(toDateKey(startTime), 'end') ||
+          new Date(startTime.getTime() + 24 * 3600 * 1000 - 1000);
+      } else {
+        endTime = parsedEnd;
+      }
+    } else if (raw.all_day || isDateOnly) {
+      endTime =
+        parseHelsinkiTimestamp(toDateKey(startTime), 'end') ||
+        new Date(startTime.getTime() + 24 * 3600 * 1000 - 1000);
+    } else {
+      endTime = new Date(startTime.getTime() + 2 * 3600 * 1000);
+    }
 
     occurrenceDates.push({
       start: startTime,
@@ -705,7 +923,6 @@ export function normalizeLinkedEvent(
       sourceEventId: raw.id,
     });
   } else {
-    // Do not invent timestamps for events lacking any start time
     return null;
   }
 
@@ -713,13 +930,12 @@ export function normalizeLinkedEvent(
   const category = categories[0];
   const topicMeta = TOPICS.find((t) => t.id === category) || TOPICS[0];
 
-  const baseTitle = decodeHtmlEntities(
-    pickLocalizedText(raw.name, 'Untitled Event')
-  );
   const isCancelled = raw.event_status === 'EventCancelled';
   const title =
     isCancelled &&
-    !/\b(peruutettu|peruttu|cancelled|canceled|inställt)\b/i.test(baseTitle)
+    !/(?<!\p{L})(?:peruutettu|peruttu|cancelled|canceled|inställt)(?!\p{L})/iu.test(
+      baseTitle
+    )
       ? `[Cancelled] ${baseTitle}`
       : baseTitle;
 
@@ -797,6 +1013,7 @@ export function normalizeLinkedEvent(
     dateKey: toDateKey(startTime),
     occurrenceDates,
     isLiveNow: false,
+    isOngoingLongSpan: false,
     isStartingSoon: false,
     isTonight: false,
     isThisWeekend: false,
@@ -828,10 +1045,7 @@ export function normalizeLinkedEvent(
 
 /**
  * Consolidates recurring sub-events that belong to the same upstream series (super_event)
- * or share the same venue and title:
- * - Preserves same-day multiple sessions by deduplicating on full [start, end] timestamps (never dateKey alone)
- * - Retains all original event IDs in `aliasIds` so deep links and saved IDs stay resolvable
- * - Recomputes representative occurrence and temporal status after merging (Finding 05).
+ * or share the same venue and title.
  */
 export function consolidateRecurringEvents(
   events: NormalizedEvent[],
@@ -911,26 +1125,88 @@ export function consolidateRecurringEvents(
   );
 }
 
-function computeCoverageBounds(events: NormalizedEvent[]): {
+const MAX_SHORT_COVERAGE_SPAN_MS = 35 * 24 * 3600 * 1000;
+
+/**
+ * Computes honest calendar coverage bounds `[coverageStart, coverageEnd]` (`BUG-02`, `BUG-03`):
+ * - Uses explicit `metaCoverageStart` / `metaCoverageEnd` when recorded by sync/live horizon.
+ * - Clamps default start to `>= todayKey` (unless a past `targetDateKey` was explicitly fetched)
+ *   so multi-year exhibitions that opened in 2024 never report `"Coverage: 2024-..."`.
+ * - Prevents lone multi-year exhibitions (`2029-12-31`) from claiming distant un-fetched years
+ *   are covered when timed events end much earlier.
+ */
+export function computeCoverageBounds(
+  events: NormalizedEvent[],
+  options?: {
+    now?: Date;
+    targetDateKey?: string | null;
+    metaCoverageStart?: string | null;
+    metaCoverageEnd?: string | null;
+  }
+): {
   coverageStart: string | null;
   coverageEnd: string | null;
 } {
+  const now = options?.now ?? new Date();
+  const nowMs = now.getTime();
+  const todayKey = toDateKey(now);
+  const targetDateKey =
+    options?.targetDateKey && isValidDateKey(options.targetDateKey)
+      ? options.targetDateKey
+      : null;
+
   let minMs = Infinity;
-  let maxMs = -Infinity;
+  let maxTimedMs = -Infinity;
+  let maxAnyMs = -Infinity;
 
   for (const ev of events) {
     for (const occ of ev.occurrenceDates) {
       const s = occ.start.getTime();
       const e = occ.end.getTime();
-      if (!Number.isNaN(s) && s < minMs) minMs = s;
-      if (!Number.isNaN(e) && e > maxMs) maxMs = e;
+      if (Number.isNaN(s) || Number.isNaN(e)) continue;
+      if (!targetDateKey && e < nowMs) continue;
+
+      const effectiveStartMs = !targetDateKey ? Math.max(s, nowMs) : s;
+      if (effectiveStartMs < minMs) minMs = effectiveStartMs;
+      if (e > maxAnyMs) maxAnyMs = e;
+
+      if (s > maxTimedMs) maxTimedMs = s;
+      if (e - s <= MAX_SHORT_COVERAGE_SPAN_MS && e > maxTimedMs) {
+        maxTimedMs = e;
+      }
     }
   }
 
-  return {
-    coverageStart: Number.isFinite(minMs) ? toDateKey(new Date(minMs)) : null,
-    coverageEnd: Number.isFinite(maxMs) ? toDateKey(new Date(maxMs)) : null,
-  };
+  let coverageStart =
+    options?.metaCoverageStart && isValidDateKey(options.metaCoverageStart)
+      ? options.metaCoverageStart
+      : Number.isFinite(minMs)
+        ? toDateKey(new Date(minMs))
+        : null;
+
+  if (coverageStart && !targetDateKey && coverageStart < todayKey) {
+    coverageStart = todayKey;
+  }
+
+  let coverageEnd =
+    options?.metaCoverageEnd && isValidDateKey(options.metaCoverageEnd)
+      ? options.metaCoverageEnd
+      : Number.isFinite(maxTimedMs)
+        ? toDateKey(new Date(maxTimedMs))
+        : Number.isFinite(maxAnyMs)
+          ? toDateKey(new Date(maxAnyMs))
+          : null;
+
+  if (targetDateKey) {
+    if (!coverageStart || targetDateKey < coverageStart) {
+      coverageStart = targetDateKey;
+    }
+    if (!coverageEnd || targetDateKey > coverageEnd) {
+      coverageEnd = targetDateKey;
+    }
+  }
+
+  return { coverageStart, coverageEnd };
 }
 
 export interface CityEventsResult {
@@ -945,18 +1221,34 @@ export interface CityEventsResult {
   coverageEnd: string | null;
 }
 
+export interface FetchCityEventsOptions {
+  onSnapshot?: (snapshot: CityEventsResult) => void;
+}
+
 function buildResultFromPayload(
   cityId: CityId,
   payload: LinkedEventsApiResponse,
   source: CityEventsResult['source'],
   fetchedAt: Date,
-  isStale: boolean
+  isStale: boolean,
+  targetDateKey: string | null = null
 ): CityEventsResult {
+  const now = new Date();
   const normalized = (payload.data || [])
-    .map((raw, idx) => normalizeLinkedEvent(raw, cityId, idx))
+    .map((raw, idx) => normalizeLinkedEvent(raw, cityId, idx, undefined, now))
     .filter((e): e is NormalizedEvent => e !== null);
-  const events = consolidateRecurringEvents(normalized);
-  const { coverageStart, coverageEnd } = computeCoverageBounds(events);
+  const consolidated = consolidateRecurringEvents(normalized, now);
+  // Drop events whose occurrences have all ended unless a specific date was requested (`BUG-02`)
+  const events = targetDateKey
+    ? consolidated
+    : consolidated.filter((ev) => hasUpcomingOrActiveOccurrence(ev, now));
+
+  const { coverageStart, coverageEnd } = computeCoverageBounds(events, {
+    now,
+    targetDateKey,
+    metaCoverageStart: payload.meta?.coverage_start ?? null,
+    metaCoverageEnd: payload.meta?.coverage_end ?? null,
+  });
 
   return {
     cityId,
@@ -967,30 +1259,147 @@ function buildResultFromPayload(
     totalUpstream:
       typeof payload.meta?.total_upstream === 'number'
         ? payload.meta.total_upstream
-        : typeof payload.meta?.count === 'number'
-          ? payload.meta.count
-          : null,
+        : typeof payload.meta?.capped_from === 'number'
+          ? payload.meta.capped_from
+          : typeof payload.meta?.count === 'number'
+            ? payload.meta.count
+            : null,
     isStale,
     coverageStart,
     coverageEnd,
   };
 }
 
+/**
+ * Fetches live 6Aika pages for a Capital Region city across an explicit upcoming horizon
+ * (`sort=start_time` + `end`), following `meta.next` up to `MAX_LIVE_API_PAGES` (`BUG-03`).
+ */
+async function fetchCapitalLivePages(
+  cityId: CityId,
+  targetDateKey: string | null,
+  horizonEndKey: string,
+  signal?: AbortSignal
+): Promise<{
+  items: RawLinkedEvent[];
+  upstreamCount: number | undefined;
+  anyFulfilled: boolean;
+}> {
+  const dateQuery = targetDateKey
+    ? `start=${targetDateKey}&end=${targetDateKey}&sort=start_time&page_size=100`
+    : `start=now&end=${horizonEndKey}&sort=start_time&page_size=100`;
+
+  const baseEndpoint = `https://api.hel.fi/linkedevents/v1/event/?division=${cityId}&include=location,keywords&${dateQuery}`;
+  const items: RawLinkedEvent[] = [];
+  const seenIds = new Set<string>();
+  let upstreamCount: number | undefined;
+  let anyFulfilled = false;
+
+  // Batch 1: pages 1..3 in parallel for low latency (page 1 alone for single custom date)
+  const initialPages = targetDateKey ? [1] : [1, 2, 3];
+  const batch1 = await Promise.allSettled(
+    initialPages.map((p) =>
+      fetchWithTimeout(
+        `${baseEndpoint}&page=${p}`,
+        { headers: { Accept: 'application/json' } },
+        FETCH_TIMEOUT_MS,
+        signal
+      )
+    )
+  );
+
+  if (signal?.aborted) {
+    throw new DOMException('Request aborted', 'AbortError');
+  }
+
+  let nextUrl: string | null = null;
+  for (let i = 0; i < batch1.length; i++) {
+    const settled = batch1[i];
+    if (settled.status === 'fulfilled' && settled.value.ok) {
+      anyFulfilled = true;
+      const json = (await settled.value.json()) as LinkedEventsApiResponse;
+      if (
+        typeof json.meta?.count === 'number' &&
+        upstreamCount === undefined
+      ) {
+        upstreamCount = json.meta.count;
+      }
+      if (Array.isArray(json.data)) {
+        for (const raw of json.data) {
+          if (raw?.id && !seenIds.has(raw.id)) {
+            seenIds.add(raw.id);
+            items.push(raw);
+          }
+        }
+      }
+      if (i === batch1.length - 1) {
+        nextUrl = upgradeKnownLinkedEventsUrl(json.meta?.next);
+      }
+    }
+  }
+
+  // Follow meta.next up to MAX_LIVE_API_PAGES when more pages exist
+  let pagesFetched = initialPages.length;
+  while (nextUrl && pagesFetched < MAX_LIVE_API_PAGES) {
+    if (signal?.aborted) {
+      throw new DOMException('Request aborted', 'AbortError');
+    }
+    const res = await fetchWithTimeout(
+      nextUrl,
+      { headers: { Accept: 'application/json' } },
+      FETCH_TIMEOUT_MS,
+      signal
+    );
+    pagesFetched++;
+    if (!res.ok) break;
+    anyFulfilled = true;
+    const json = (await res.json()) as LinkedEventsApiResponse;
+    if (Array.isArray(json.data)) {
+      for (const raw of json.data) {
+        if (raw?.id && !seenIds.has(raw.id)) {
+          seenIds.add(raw.id);
+          items.push(raw);
+        }
+      }
+    }
+    nextUrl = upgradeKnownLinkedEventsUrl(json.meta?.next);
+  }
+
+  return { items, upstreamCount, anyFulfilled };
+}
+
 export async function fetchCityEvents(
   cityId: CityId,
   forceRefresh = false,
   targetDateKey: string | null = null,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: FetchCityEventsOptions
 ): Promise<CityEventsResult> {
   const cityConfig = CITIES[cityId];
-  // Static-jsonld feeds already contain all events in the base city feed; only key by date for live-api
   const cacheKey =
     cityConfig.dataMechanism === 'live-api' && targetDateKey
       ? `${cityId}:${targetDateKey}`
       : cityId;
 
+  // 1. Fast in-memory normalized result cache (`PERF-03`)
+  if (!forceRefresh) {
+    const memHit = memoryResultCache.get(cacheKey);
+    if (memHit && Date.now() - memHit.timestamp <= CACHE_TTL_MS) {
+      const now = new Date();
+      const refreshedEvents = memHit.result.events
+        .map((ev) => refreshEventTemporalState(ev, now, targetDateKey))
+        .filter(
+          (ev) => Boolean(targetDateKey) || hasUpcomingOrActiveOccurrence(ev, now)
+        );
+      return {
+        ...memHit.result,
+        events: refreshedEvents,
+      };
+    }
+  }
+
   const cachedLookup = await readCachedFeed(cacheKey);
 
+  // 2. IndexedDB cache hit — `isFresh` is false for `'offline-fallback'` (`BUG-06`)
   if (
     !forceRefresh &&
     cachedLookup?.isFresh &&
@@ -1003,9 +1412,14 @@ export async function fetchCityEvents(
         ? 'indexeddb-cache'
         : 'static-feed',
       new Date(cachedLookup.record.timestamp),
-      false
+      false,
+      targetDateKey
     );
     if (result.events.length > 0 || targetDateKey) {
+      memoryResultCache.set(cacheKey, {
+        timestamp: cachedLookup.record.timestamp,
+        result,
+      });
       return result;
     }
   }
@@ -1017,102 +1431,139 @@ export async function fetchCityEvents(
   const staticFeedUrl = `${baseUrl}feeds/${cityId}.json`;
 
   if (cityConfig.dataMechanism === 'live-api') {
+    let bundledSnapshotPayload: LinkedEventsApiResponse | null = null;
+
+    // Stale-while-revalidate (`PERF-08`): serve bundled snapshot (or stale cache) immediately
+    // while live `api.hel.fi` requests are in flight.
+    const snapshotPromise = !targetDateKey
+      ? fetchWithTimeout(
+          staticFeedUrl,
+          { headers: { Accept: 'application/json' } },
+          FETCH_TIMEOUT_MS,
+          signal
+        )
+          .then(async (res) => {
+            if (!res.ok) return null;
+            const json = (await res.json()) as LinkedEventsApiResponse;
+            bundledSnapshotPayload = json;
+            if (options?.onSnapshot && !signal?.aborted) {
+              const snapResult = buildResultFromPayload(
+                cityId,
+                json,
+                'static-feed',
+                new Date(),
+                false,
+                null
+              );
+              if (snapResult.events.length > 0) {
+                options.onSnapshot(snapResult);
+              }
+            }
+            return json;
+          })
+          .catch(() => null)
+      : Promise.resolve(null);
+
     try {
-      const dateQuery = targetDateKey
-        ? `start=${targetDateKey}&end=${targetDateKey}&sort=end_time&page_size=100`
-        : `start=now&sort=end_time&page_size=100`;
+      const todayKey = toDateKey(new Date());
+      const horizonEndKey = addCalendarDays(todayKey, LIVE_HORIZON_DAYS);
 
-      const page1Url = `https://api.hel.fi/linkedevents/v1/event/?division=${cityId}&include=location,keywords&${dateQuery}&page=1`;
-      const page2Url = `https://api.hel.fi/linkedevents/v1/event/?division=${cityId}&include=location,keywords&${dateQuery}&page=2`;
-
-      const [res1, res2, staticRes] = await Promise.allSettled([
-        fetchWithTimeout(
-          page1Url,
-          { headers: { Accept: 'application/json' } },
-          FETCH_TIMEOUT_MS,
-          signal
-        ),
-        fetchWithTimeout(
-          page2Url,
-          { headers: { Accept: 'application/json' } },
-          FETCH_TIMEOUT_MS,
-          signal
-        ),
-        !targetDateKey
-          ? fetchWithTimeout(
-              staticFeedUrl,
-              { headers: { Accept: 'application/json' } },
-              FETCH_TIMEOUT_MS,
-              signal
-            )
-          : Promise.reject(new Error('skip static on custom date')),
+      const [liveOutcome, staticPayload] = await Promise.all([
+        fetchCapitalLivePages(cityId, targetDateKey, horizonEndKey, signal),
+        snapshotPromise,
       ]);
 
       if (signal?.aborted) {
         throw new DOMException('Request aborted', 'AbortError');
       }
 
-      const anyLiveFulfilled =
-        (res1.status === 'fulfilled' && res1.value.ok) ||
-        (res2.status === 'fulfilled' && res2.value.ok);
+      if (liveOutcome.anyFulfilled) {
+        const combinedRaw: RawLinkedEvent[] = [];
+        const seenIds = new Set<string>();
 
-      const combinedRaw: RawLinkedEvent[] = [];
-      const seenIds = new Set<string>();
-      let upstreamCount: number | undefined;
-
-      for (const settled of [res1, res2, staticRes]) {
-        if (settled.status === 'fulfilled' && settled.value.ok) {
-          const json = (await settled.value.json()) as LinkedEventsApiResponse;
-          if (
-            typeof json.meta?.count === 'number' &&
-            upstreamCount === undefined
-          ) {
-            upstreamCount = json.meta.count;
+        for (const item of liveOutcome.items) {
+          if (item?.id && !seenIds.has(item.id)) {
+            seenIds.add(item.id);
+            combinedRaw.push(item);
           }
-          if (Array.isArray(json.data)) {
-            for (const item of json.data) {
-              if (!seenIds.has(item.id)) {
-                seenIds.add(item.id);
-                combinedRaw.push(item);
-              }
+        }
+
+        // Merge multi-week synced snapshot items when not querying a custom date (`BUG-03`)
+        if (!targetDateKey && Array.isArray(staticPayload?.data)) {
+          for (const item of staticPayload.data) {
+            if (item?.id && !seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              combinedRaw.push(item);
             }
           }
         }
-      }
 
-      // Return live result if either events were found OR the live API explicitly returned 0 events for a specific date
-      if (combinedRaw.length > 0 || (targetDateKey && anyLiveFulfilled)) {
+        const snapshotCovEnd = !targetDateKey
+          ? staticPayload?.meta?.coverage_end
+          : null;
+        const effectiveCovEnd = targetDateKey
+          ? targetDateKey
+          : snapshotCovEnd && snapshotCovEnd > horizonEndKey
+            ? snapshotCovEnd
+            : horizonEndKey;
+
         const payload: LinkedEventsApiResponse = {
           meta: {
             count: combinedRaw.length,
-            total_upstream: upstreamCount ?? combinedRaw.length,
+            total_upstream: liveOutcome.upstreamCount ?? combinedRaw.length,
+            coverage_start: targetDateKey || todayKey,
+            coverage_end: effectiveCovEnd,
             next: null,
             previous: null,
             generated_at: new Date().toISOString(),
           },
           data: combinedRaw,
         };
+
+        const ts = Date.now();
         await writeCachedFeed({
           cacheKey,
           cityId,
-          timestamp: Date.now(),
+          timestamp: ts,
           source: 'live-api',
           payload,
         });
 
-        return buildResultFromPayload(
+        const built = buildResultFromPayload(
           cityId,
           payload,
           'live-api',
-          new Date(),
-          false
+          new Date(ts),
+          false,
+          targetDateKey
         );
+        memoryResultCache.set(cacheKey, { timestamp: ts, result: built });
+        return built;
       }
     } catch (err) {
-      if ((err as Error)?.name === 'AbortError') throw err;
+      if (isCallerAbort(err, signal)) throw err;
       console.warn(
         `[linkedEventsClient] Live API fetch failed for ${cityId}, falling back:`,
         err
+      );
+    }
+
+    // Reuse already-downloaded bundled snapshot if live API failed
+    if (bundledSnapshotPayload && Array.isArray(bundledSnapshotPayload.data)) {
+      await writeCachedFeed({
+        cacheKey: cityId,
+        cityId,
+        timestamp: Date.now(),
+        source: 'offline-fallback',
+        payload: bundledSnapshotPayload,
+      });
+      return buildResultFromPayload(
+        cityId,
+        bundledSnapshotPayload,
+        'offline-fallback',
+        new Date(),
+        true,
+        targetDateKey
       );
     }
   }
@@ -1129,31 +1580,32 @@ export async function fetchCityEvents(
       throw new Error(`Failed to load static feed ${staticFeedUrl}`);
     }
     const payload = (await fallbackRes.json()) as LinkedEventsApiResponse;
+    const isOfflineFallback = cityConfig.dataMechanism === 'live-api';
+    const ts = Date.now();
     await writeCachedFeed({
       cacheKey: cityId,
       cityId,
-      timestamp: Date.now(),
-      source:
-        cityConfig.dataMechanism === 'static-jsonld'
-          ? 'static-feed'
-          : 'offline-fallback',
+      timestamp: ts,
+      source: isOfflineFallback ? 'offline-fallback' : 'static-feed',
       payload,
     });
 
-    // Finding 02: Never fabricate or project events onto uncovered dates.
-    return buildResultFromPayload(
+    const built = buildResultFromPayload(
       cityId,
       payload,
-      cityConfig.dataMechanism === 'static-jsonld'
-        ? 'static-feed'
-        : 'offline-fallback',
-      new Date(),
-      cityConfig.dataMechanism === 'live-api'
+      isOfflineFallback ? 'offline-fallback' : 'static-feed',
+      new Date(ts),
+      isOfflineFallback,
+      targetDateKey
     );
+    if (!isOfflineFallback) {
+      memoryResultCache.set(cacheKey, { timestamp: ts, result: built });
+    }
+    return built;
   } catch (err) {
-    if ((err as Error)?.name === 'AbortError') throw err;
+    if (isCallerAbort(err, signal)) throw err;
 
-    // Finding 21: Retain and serve stale IndexedDB cached records when offline or network fails
+    // Serve stale IndexedDB cached records when offline or network times out (`BUG-05`, `BUG-06`)
     const staleLookup =
       cachedLookup || (targetDateKey ? await readCachedFeed(cityId) : null);
     if (staleLookup && Array.isArray(staleLookup.record.payload?.data)) {
@@ -1162,7 +1614,8 @@ export async function fetchCityEvents(
         staleLookup.record.payload,
         'offline-fallback',
         new Date(staleLookup.record.timestamp),
-        true
+        true,
+        targetDateKey
       );
     }
     throw err;
@@ -1171,9 +1624,6 @@ export async function fetchCityEvents(
 
 /**
  * Groups events into VenueStoryGroups for map markers and flyer stories.
- * By default, only events with genuine coordinates are placed on the map (`includeUnmapped = false`),
- * preventing invented locations (Finding 07). When opening a single unmapped event in the flyer player,
- * pass `includeUnmapped = true`.
  */
 export function groupEventsByVenue(
   events: NormalizedEvent[],
@@ -1187,7 +1637,8 @@ export function groupEventsByVenue(
       if (!includeUnmapped) continue;
     }
 
-    const coords: [number, number] = ev.coordinates || CITIES[ev.cityId].coordinates;
+    const coords: [number, number] =
+      ev.coordinates || CITIES[ev.cityId].coordinates;
     const coordKey = ev.coordinates
       ? `${ev.coordinates[0].toFixed(4)},${ev.coordinates[1].toFixed(4)}`
       : `unmapped:${ev.venueId}`;

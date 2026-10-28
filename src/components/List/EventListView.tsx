@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Bookmark,
@@ -13,14 +13,19 @@ import {
   ListSortMode,
   NormalizedEvent,
 } from '../../types/linkedEvents';
-import { safeParseDateKey } from '../../utils/calendarUtils';
+import {
+  FINLAND_TIMEZONE,
+  formatEventTimeLabel,
+  safeParseDateKey,
+} from '../../utils/calendarUtils';
 import { formatDistance } from '../../utils/distanceUtils';
 import { getSafeEventImageUrl } from '../../utils/licenseGuard';
 
-interface EventListViewProps {
+export interface EventListViewProps {
   activeCity: CityId;
   events: NormalizedEvent[];
   savedEventIds: string[];
+  now?: Date;
   loading?: boolean;
   feedError?: string | null;
   selectedDate?: string | null;
@@ -39,6 +44,9 @@ interface EventListViewProps {
   onRetry?: () => void;
 }
 
+const INITIAL_VISIBLE_CARDS = 40;
+const VISIBLE_CARDS_STEP = 40;
+
 const POLE_ANGLES = [
   -3.2, 2.7, -1.9, 3.4, -2.6, 1.8, -3.5, 2.3, -1.4, 3.1, -2.8, 2.1,
 ];
@@ -56,6 +64,32 @@ const POLE_RADII = [
   '6px 14px 5px 12px',
 ];
 
+// Hoisted Europe/Helsinki formatters (`PERF-02`, `BUG-07`)
+const selectedDateBannerFmt = new Intl.DateTimeFormat('en-GB', {
+  timeZone: FINLAND_TIMEZONE,
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+});
+
+const generatedDateOnlyFmt = new Intl.DateTimeFormat('en-GB', {
+  timeZone: FINLAND_TIMEZONE,
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+});
+
+const generatedDateTimeFmt = new Intl.DateTimeFormat('en-GB', {
+  timeZone: FINLAND_TIMEZONE,
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
 function hashEventId(id: string): number {
   let h = 0;
   for (let i = 0; i < id.length; i++) {
@@ -64,26 +98,77 @@ function hashEventId(id: string): number {
   return Math.abs(h);
 }
 
-function compareNullableDistance(
-  aDist: number | null,
-  bDist: number | null,
-  aStart: Date,
-  bStart: Date
+function compareChronological(
+  a: NormalizedEvent,
+  b: NormalizedEvent,
+  nowMs: number,
+  selectedDate?: string | null
 ): number {
-  const aHas = aDist !== null && Number.isFinite(aDist);
-  const bHas = bDist !== null && Number.isFinite(bDist);
+  const aNext = !selectedDate
+    ? Math.max(a.startTime.getTime(), nowMs)
+    : a.startTime.getTime();
+  const bNext = !selectedDate
+    ? Math.max(b.startTime.getTime(), nowMs)
+    : b.startTime.getTime();
+  if (aNext !== bNext) return aNext - bNext;
+  if (Boolean(a.isOngoingLongSpan) !== Boolean(b.isOngoingLongSpan)) {
+    return a.isOngoingLongSpan ? 1 : -1;
+  }
+  const aDur = a.endTime.getTime() - a.startTime.getTime();
+  const bDur = b.endTime.getTime() - b.startTime.getTime();
+  if (aDur !== bDur) return aDur - bDur;
+  return a.startTime.getTime() - b.startTime.getTime();
+}
+
+function compareNullableDistance(
+  a: NormalizedEvent,
+  b: NormalizedEvent,
+  nowMs: number,
+  selectedDate?: string | null
+): number {
+  const aHas = a.distanceKm !== null && Number.isFinite(a.distanceKm);
+  const bHas = b.distanceKm !== null && Number.isFinite(b.distanceKm);
   if (aHas && bHas) {
-    return (aDist as number) - (bDist as number);
+    const diff = (a.distanceKm as number) - (b.distanceKm as number);
+    if (diff !== 0) return diff;
   }
   if (aHas && !bHas) return -1;
   if (!aHas && bHas) return 1;
-  return aStart.getTime() - bStart.getTime();
+  return compareChronological(a, b, nowMs, selectedDate);
+}
+
+/**
+ * Shared sort order for Pole Feed cards and Flyer navigation when opened from the list (`UI-05`).
+ */
+export function sortEventsForList(
+  events: NormalizedEvent[],
+  sortMode: ListSortMode,
+  now: Date = new Date(),
+  selectedDate?: string | null
+): NormalizedEvent[] {
+  const nowMs = now.getTime();
+  const list = [...events];
+  list.sort((a, b) => {
+    if (sortMode === 'distance') {
+      return compareNullableDistance(a, b, nowMs, selectedDate);
+    }
+    if (sortMode === 'live') {
+      if (a.isLiveNow !== b.isLiveNow) return a.isLiveNow ? -1 : 1;
+      if (a.isStartingSoon !== b.isStartingSoon) {
+        return a.isStartingSoon ? -1 : 1;
+      }
+      return compareNullableDistance(a, b, nowMs, selectedDate);
+    }
+    return compareChronological(a, b, nowMs, selectedDate);
+  });
+  return list;
 }
 
 export const EventListView: React.FC<EventListViewProps> = ({
   activeCity,
   events,
   savedEventIds,
+  now: nowProp,
   loading = false,
   feedError = null,
   selectedDate = null,
@@ -101,9 +186,26 @@ export const EventListView: React.FC<EventListViewProps> = ({
   onClearDate,
   onRetry,
 }) => {
+  const now = useMemo(() => nowProp ?? new Date(), [nowProp]);
   const [internalSortMode, setInternalSortMode] =
     useState<ListSortMode>('distance');
   const sortMode = controlledSortMode ?? internalSortMode;
+
+  const paginationKey = `${activeCity}|${selectedDate ?? ''}|${sortMode}`;
+  const [paginationState, setPaginationState] = useState<{
+    key: string;
+    count: number;
+  }>({
+    key: paginationKey,
+    count: INITIAL_VISIBLE_CARDS,
+  });
+
+  const visibleCount =
+    paginationState.key === paginationKey
+      ? paginationState.count
+      : INITIAL_VISIBLE_CARDS;
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const handleSortChange = (mode: ListSortMode) => {
     if (onSortModeChange) {
@@ -115,43 +217,43 @@ export const EventListView: React.FC<EventListViewProps> = ({
 
   const cityMeta = CITIES[activeCity];
 
-  const sortedEvents = useMemo(() => {
-    const list = [...events];
-    list.sort((a, b) => {
-      if (sortMode === 'distance') {
-        return compareNullableDistance(
-          a.distanceKm,
-          b.distanceKm,
-          a.startTime,
-          b.startTime
-        );
-      }
-      if (sortMode === 'live') {
-        if (a.isLiveNow !== b.isLiveNow) return a.isLiveNow ? -1 : 1;
-        if (a.isStartingSoon !== b.isStartingSoon) {
-          return a.isStartingSoon ? -1 : 1;
-        }
-        return compareNullableDistance(
-          a.distanceKm,
-          b.distanceKm,
-          a.startTime,
-          b.startTime
-        );
-      }
-      return a.startTime.getTime() - b.startTime.getTime();
-    });
-    return list;
-  }, [events, sortMode]);
+  const sortedEvents = useMemo(
+    () => sortEventsForList(events, sortMode, now, selectedDate),
+    [events, sortMode, now, selectedDate]
+  );
 
-  const dateFmt = new Intl.DateTimeFormat('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-  });
-  const timeFmt = new Intl.DateTimeFormat('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const visibleEvents = useMemo(
+    () => sortedEvents.slice(0, visibleCount),
+    [sortedEvents, visibleCount]
+  );
+
+  const hasMoreCards = sortedEvents.length > visibleCount;
+
+  useEffect(() => {
+    if (!hasMoreCards) return;
+    const node = sentinelRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setPaginationState((prev) => {
+            const current =
+              prev.key === paginationKey ? prev.count : INITIAL_VISIBLE_CARDS;
+            return {
+              key: paginationKey,
+              count: Math.min(sortedEvents.length, current + VISIBLE_CARDS_STEP),
+            };
+          });
+        }
+      },
+      { rootMargin: '480px 0px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMoreCards, paginationKey, sortedEvents.length]);
+
+  const savedIdSet = useMemo(() => new Set(savedEventIds), [savedEventIds]);
 
   const isDateOutsideCoverage = useMemo(() => {
     if (!selectedDate) return false;
@@ -162,19 +264,26 @@ export const EventListView: React.FC<EventListViewProps> = ({
 
   const formattedSelectedDate = useMemo(() => {
     if (!selectedDate) return null;
-    return new Intl.DateTimeFormat('en-GB', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    }).format(safeParseDateKey(selectedDate));
+    return selectedDateBannerFmt.format(safeParseDateKey(selectedDate));
   }, [selectedDate]);
+
+  const formattedGeneratedDateOnly = useMemo(() => {
+    if (!generatedAt) return null;
+    const d = new Date(generatedAt);
+    return Number.isNaN(d.getTime()) ? null : generatedDateOnlyFmt.format(d);
+  }, [generatedAt]);
+
+  const formattedGeneratedDateTime = useMemo(() => {
+    if (!generatedAt) return null;
+    const d = new Date(generatedAt);
+    return Number.isNaN(d.getTime()) ? null : generatedDateTimeFmt.format(d);
+  }, [generatedAt]);
 
   return (
     <main
       aria-label={`${cityMeta.name} Pole Sticker Feed`}
       aria-busy={loading}
-      className="relative w-full h-full overflow-y-auto overflow-x-hidden street-box-bg px-3 sm:px-6 pt-16 pb-20"
+      className="relative w-full h-full overflow-y-auto overflow-x-hidden street-box-bg px-3.5 sm:pl-6 sm:pr-20 lg:px-6 pt-16 pb-28 sm:pb-20"
     >
       {/* Continuous Vertical Galvanized Steel Pole Spine running behind the stickers */}
       <div
@@ -183,7 +292,7 @@ export const EventListView: React.FC<EventListViewProps> = ({
       >
         <div className="pole-clamp-band h-5 w-full flex items-center justify-between px-2">
           <span className="w-2 h-2 rounded-full bg-[#1a1d22] border border-[#bbc4d0]" />
-          <span className="font-mono-stamp text-[8px] font-bold tracking-widest text-[#111317] uppercase hidden sm:inline">
+          <span className="font-mono-stamp text-[11px] font-bold tracking-widest text-[#111317] uppercase hidden sm:inline">
             {cityMeta.id.toUpperCase()}
           </span>
           <span className="w-2 h-2 rounded-full bg-[#1a1d22] border border-[#bbc4d0]" />
@@ -203,7 +312,7 @@ export const EventListView: React.FC<EventListViewProps> = ({
         <div
           role="group"
           aria-label="Sort events"
-          className="flex items-center justify-center gap-2.5 mb-5 flex-wrap"
+          className="flex items-center justify-center gap-2.5 mt-1 mb-5 flex-wrap"
         >
           {(
             [
@@ -217,7 +326,7 @@ export const EventListView: React.FC<EventListViewProps> = ({
               {
                 id: 'time',
                 label: '⏰ Soonest',
-                title: 'Sort chronologically by start time',
+                title: 'Sort chronologically by upcoming start time',
                 rot: '2.4deg',
                 rad: '5px 13px 4px 11px',
               },
@@ -244,7 +353,7 @@ export const EventListView: React.FC<EventListViewProps> = ({
                     '--slap-radius': opt.rad,
                   } as React.CSSProperties
                 }
-                className={`organic-slap-btn px-3 py-1 font-display-slap text-xs uppercase tracking-tight cursor-pointer border-2 ${
+                className={`organic-slap-btn px-3 py-1 font-display-slap text-xs uppercase tracking-tight cursor-pointer border-2 focus-visible:outline-2 focus-visible:outline-[#ffe600] focus-visible:outline-offset-2 ${
                   active
                     ? 'bg-[#ffe600] text-[#0d0e11] border-[#0d0e11] outline-2 outline-[#f4f1ea]'
                     : 'bg-[#181b20]/90 text-[#d5d2c8] hover:text-white border-[#f4f1ea]/60'
@@ -266,8 +375,8 @@ export const EventListView: React.FC<EventListViewProps> = ({
               {feedError
                 ? `⚠️ Live update failed (${feedError}). Showing cached stickers.`
                 : `⚠️ Showing cached / snapshot feed${
-                    generatedAt
-                      ? ` (updated ${new Date(generatedAt).toLocaleDateString('en-GB')})`
+                    formattedGeneratedDateOnly
+                      ? ` (updated ${formattedGeneratedDateOnly})`
                       : ''
                   }.`}
             </span>
@@ -275,7 +384,7 @@ export const EventListView: React.FC<EventListViewProps> = ({
               <button
                 type="button"
                 onClick={onRetry}
-                className="px-2 py-0.5 rounded-xs bg-[#ffe600] text-[#0d0e11] font-mono-stamp text-[10px] font-bold uppercase cursor-pointer shrink-0"
+                className="px-2 py-0.5 rounded-xs bg-[#ffe600] text-[#0d0e11] font-mono-stamp text-[11px] font-bold uppercase cursor-pointer shrink-0 focus-visible:outline-2 focus-visible:outline-[#f4f1ea] focus-visible:outline-offset-2"
               >
                 Retry
               </button>
@@ -283,7 +392,7 @@ export const EventListView: React.FC<EventListViewProps> = ({
           </div>
         )}
 
-        {/* Distinct Loading, Error, No-Coverage, and No-Match States (Finding 15) */}
+        {/* Distinct Loading, Error, No-Coverage, and No-Match States */}
         {loading && sortedEvents.length === 0 ? (
           <div
             role="status"
@@ -339,7 +448,7 @@ export const EventListView: React.FC<EventListViewProps> = ({
                     '--slap-radius': '8px 3px 10px 4px',
                   } as React.CSSProperties
                 }
-                className="organic-slap-btn inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#ffe600] text-[#0d0e11] border-2 border-[#0d0e11] font-display-slap text-xs uppercase cursor-pointer"
+                className="organic-slap-btn inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#ffe600] text-[#0d0e11] border-2 border-[#0d0e11] font-display-slap text-xs uppercase cursor-pointer focus-visible:outline-2 focus-visible:outline-[#0d0e11] focus-visible:outline-offset-2"
               >
                 <RefreshCw aria-hidden="true" className="w-3.5 h-3.5" />
                 <span>Retry Fetch</span>
@@ -383,7 +492,7 @@ export const EventListView: React.FC<EventListViewProps> = ({
                       '--slap-radius': '8px 3px 10px 4px',
                     } as React.CSSProperties
                   }
-                  className="organic-slap-btn px-3.5 py-1.5 bg-[#ffe600] text-[#0d0e11] border-2 border-[#0d0e11] font-display-slap text-xs uppercase cursor-pointer"
+                  className="organic-slap-btn px-3.5 py-1.5 bg-[#ffe600] text-[#0d0e11] border-2 border-[#0d0e11] font-display-slap text-xs uppercase cursor-pointer focus-visible:outline-2 focus-visible:outline-[#0d0e11] focus-visible:outline-offset-2"
                 >
                   Show All Dates
                 </button>
@@ -397,294 +506,333 @@ export const EventListView: React.FC<EventListViewProps> = ({
                     '--slap-radius': '8px 3px 10px 4px',
                   } as React.CSSProperties
                 }
-                className="organic-slap-btn px-3.5 py-1.5 bg-[#ff2a85] text-white border-2 border-[#0d0e11] font-display-slap text-xs uppercase cursor-pointer"
+                className="organic-slap-btn px-3.5 py-1.5 bg-[#ff2a85] text-[#0d0e11] border-2 border-[#0d0e11] font-display-slap text-xs uppercase cursor-pointer focus-visible:outline-2 focus-visible:outline-[#0d0e11] focus-visible:outline-offset-2"
               >
                 Clear All Filters
               </button>
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6 px-1 sm:px-2">
-            {sortedEvents.map((ev, index) => {
-              const isSaved =
-                savedEventIds.includes(ev.id) ||
-                ev.aliasIds.some((id) => savedEventIds.includes(id));
-              const safeImg = getSafeEventImageUrl(
-                ev.raw,
-                ev.id,
-                ev.aliasIds
-              );
-              const topicMeta =
-                TOPICS.find((t) => t.id === ev.category) || TOPICS[0];
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6 px-1 sm:px-2">
+              {visibleEvents.map((ev, index) => {
+                const isSaved =
+                  savedIdSet.has(ev.id) ||
+                  ev.aliasIds.some((id) => savedIdSet.has(id));
+                const safeImg = getSafeEventImageUrl(
+                  ev.raw,
+                  ev.id,
+                  ev.aliasIds
+                );
+                const topicMeta =
+                  TOPICS.find((t) => t.id === ev.category) || TOPICS[0];
 
-              const h = hashEventId(ev.id);
-              const rot = POLE_ANGLES[(h + index) % POLE_ANGLES.length];
-              const offsetX =
-                POLE_OFFSETS_X[(h + index) % POLE_OFFSETS_X.length];
-              const radius = POLE_RADII[(h + index) % POLE_RADII.length];
-              const variant = (h + index) % 4;
+                const h = hashEventId(ev.id);
+                const rot = POLE_ANGLES[(h + index) % POLE_ANGLES.length];
+                const offsetX =
+                  POLE_OFFSETS_X[(h + index) % POLE_OFFSETS_X.length];
+                const radius = POLE_RADII[(h + index) % POLE_RADII.length];
+                const variant = (h + index) % 4;
 
-              // Variant 1 is wheatpaste paper white; others are dark or colored vinyl slaps
-              const isPaperVariant = variant === 1;
-              const isPostalVariant = variant === 3;
+                // Variant 1 is wheatpaste paper white; others are dark vinyl slaps
+                const isPaperVariant = variant === 1;
+                const isPostalVariant = variant === 3;
 
-              // Modern Web Guidance (defer-rendering-heavy-content):
-              // Only apply content-visibility: auto to items outside the initial viewport fold (index >= 8)
-              const deferredClass = index >= 8 ? 'event-card-deferred' : '';
+                // Modern Web Guidance (defer-rendering-heavy-content):
+                // Only apply content-visibility: auto to items outside the initial viewport fold (index >= 8)
+                const deferredClass = index >= 8 ? 'event-card-deferred' : '';
 
-              return (
-                <article
-                  key={ev.id}
-                  style={
-                    {
-                      '--slap-rot': `${rot}deg`,
-                      '--slap-x': `${offsetX}px`,
-                      '--slap-radius': radius,
-                    } as React.CSSProperties
-                  }
-                  className={`${deferredClass} pole-sticker-slap relative overflow-hidden cursor-pointer select-none ${
-                    isPaperVariant
-                      ? 'bg-[#f4f1ea] text-[#0d0e11] border-[2.5px] border-[#0d0e11] outline-2 outline-[#f4f1ea]'
-                      : 'bg-[#171a20] text-[#f4f1ea] border-[2.5px] border-[#f4f1ea]'
-                  }`}
-                  onClick={() => onPlayStory(ev)}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Open event flyer for ${ev.title} at ${ev.venueName}`}
-                  onKeyDown={(e) => {
-                    // Finding 13: Ignore keyboard events originating from child interactive buttons (such as Bookmark)
-                    if (e.target !== e.currentTarget) return;
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      onPlayStory(ev);
+                const scheduleLabel = formatEventTimeLabel(ev, {
+                  selectedDate,
+                  now,
+                });
+
+                return (
+                  <article
+                    key={ev.id}
+                    style={
+                      {
+                        '--slap-rot': `${rot}deg`,
+                        '--slap-x': `${offsetX}px`,
+                        '--slap-radius': radius,
+                      } as React.CSSProperties
                     }
-                  }}
-                >
-                  {/* Optional top postal stripe on variant 3 */}
-                  {isPostalVariant && (
-                    <div
-                      aria-hidden="true"
-                      className="h-1.5 w-full postal-stripe-bar"
-                    />
-                  )}
-
-                  {/* Quick Corner Save/Stash Slap */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleSaveEvent(ev.id, ev);
-                    }}
-                    onKeyDown={(e) => {
-                      e.stopPropagation();
-                    }}
-                    title={
-                      isSaved
-                        ? 'Remove from Saved Stash'
-                        : 'Save event to Stash'
-                    }
-                    aria-pressed={isSaved}
-                    aria-label={
-                      isSaved
-                        ? `Remove ${ev.title} from saved stash`
-                        : `Save ${ev.title} to stash`
-                    }
-                    className={`absolute top-2 right-2 z-20 w-8 h-8 rounded-full flex items-center justify-center transition-transform hover:scale-115 cursor-pointer border-[1.5px] ${
-                      isSaved
-                        ? 'bg-[#ff2a85] text-white border-[#f4f1ea] rotate-6'
-                        : isPaperVariant
-                          ? 'bg-[#0d0e11]/10 hover:bg-[#0d0e11]/20 text-[#0d0e11] border-[#0d0e11]/30 -rotate-6'
-                          : 'bg-[#0d0e11]/70 hover:bg-[#0d0e11] text-[#f4f1ea] border-[#f4f1ea]/40 -rotate-6'
+                    className={`${deferredClass} pole-sticker-slap relative overflow-hidden ${
+                      isPaperVariant
+                        ? 'bg-[#f4f1ea] text-[#0d0e11] border-[2.5px] border-[#0d0e11] outline-2 outline-[#f4f1ea]'
+                        : 'bg-[#171a20] text-[#f4f1ea] border-[2.5px] border-[#f4f1ea]'
                     }`}
                   >
-                    <Bookmark
-                      aria-hidden="true"
-                      className={`w-4 h-4 ${isSaved ? 'fill-current' : ''}`}
-                    />
-                  </button>
+                    {/* Optional top postal stripe on variant 3 */}
+                    {isPostalVariant && (
+                      <div
+                        aria-hidden="true"
+                        className="h-1.5 w-full postal-stripe-bar"
+                      />
+                    )}
 
-                  <div className="flex gap-3 p-3">
-                    {/* Framed Crooked Thumbnail or Graphic Stamp */}
-                    <div
-                      title={ev.attribution.badgeText}
-                      className={`relative w-20 h-20 rounded-md overflow-hidden shrink-0 border-2 ${
-                        isPaperVariant ? 'border-[#0d0e11]' : 'border-[#f4f1ea]'
-                      } -rotate-2`}
-                      style={{
-                        backgroundColor: topicMeta.slapBg,
-                        color: topicMeta.slapText,
-                      }}
+                    {/* Quick Corner Save/Stash Slap (sibling control above stretched primary button, `A11Y-01`) */}
+                    <button
+                      type="button"
+                      onClick={() => onToggleSaveEvent(ev.id, ev)}
+                      title={
+                        isSaved
+                          ? 'Remove from Saved Stash'
+                          : 'Save event to Stash'
+                      }
+                      aria-pressed={isSaved}
+                      aria-label={
+                        isSaved
+                          ? `Remove ${ev.title} from saved stash`
+                          : `Save ${ev.title} to stash`
+                      }
+                      className={`absolute top-2 right-2 z-20 w-8 h-8 rounded-full flex items-center justify-center transition-transform hover:scale-115 cursor-pointer border-[1.5px] focus-visible:outline-2 focus-visible:outline-[#ffe600] focus-visible:outline-offset-2 ${
+                        isSaved
+                          ? 'bg-[#ff2a85] text-[#0d0e11] border-[#0d0e11] rotate-6'
+                          : isPaperVariant
+                            ? 'bg-[#0d0e11]/10 hover:bg-[#0d0e11]/20 text-[#0d0e11] border-[#0d0e11]/40 -rotate-6'
+                            : 'bg-[#0d0e11]/75 hover:bg-[#0d0e11] text-[#f4f1ea] border-[#f4f1ea]/50 -rotate-6'
+                      }`}
                     >
-                      {safeImg ? (
-                        <img
-                          src={safeImg}
-                          alt={ev.imageAlt}
-                          title={ev.attribution.badgeText}
-                          width="80"
-                          height="80"
-                          loading={index < 6 ? 'eager' : 'lazy'}
-                          className="w-full h-full object-cover contrast-110"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center p-1.5 text-center">
-                          <span className="text-2xl leading-none">
-                            {ev.categoryEmoji}
-                          </span>
-                          <span className="mt-1 font-display-slap text-[8px] uppercase tracking-tighter leading-none">
-                            {ev.categoryLabel.split(' ')[0]}
-                          </span>
-                        </div>
-                      )}
+                      <Bookmark
+                        aria-hidden="true"
+                        className={`w-4 h-4 ${isSaved ? 'fill-current' : ''}`}
+                      />
+                    </button>
 
-                      {ev.isLiveNow && (
-                        <span className="absolute bottom-0 inset-x-0 bg-[#ff2a85] text-white font-mono-stamp text-[8px] font-bold uppercase text-center leading-tight flex items-center justify-center gap-0.5">
-                          <Flame aria-hidden="true" className="w-2.5 h-2.5" />
-                          LIVE
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Minimal, High-Impact Flyer Copy */}
-                    <div className="flex-1 min-w-0 pr-6 flex flex-col justify-between">
-                      <div>
-                        {/* Tilted Category + Honest Price Stamp (Finding 06) */}
-                        <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                          <span
-                            className="px-1.5 py-[1px] rounded-xs font-display-slap text-[9px] uppercase tracking-tight border border-[#0d0e11] -rotate-1"
-                            style={{
-                              backgroundColor: topicMeta.slapBg,
-                              color: topicMeta.slapText,
-                            }}
-                          >
-                            {ev.categoryEmoji} {ev.categoryLabel.split(' ')[0]}
-                          </span>
-
-                          {ev.priceStatus === 'free' ? (
-                            <span className="px-1.5 py-[1px] rounded-xs bg-[#22c55e] text-[#0d0e11] border border-[#0d0e11] font-mono-stamp text-[9px] font-bold uppercase rotate-1">
-                              FREE
+                    <div className="flex gap-3 p-3">
+                      {/* Framed Crooked Thumbnail or Graphic Stamp */}
+                      <div
+                        title={ev.attribution.badgeText}
+                        className={`relative w-20 h-20 rounded-md overflow-hidden shrink-0 border-2 ${
+                          isPaperVariant
+                            ? 'border-[#0d0e11]'
+                            : 'border-[#f4f1ea]'
+                        } -rotate-2`}
+                        style={{
+                          backgroundColor: topicMeta.slapBg,
+                          color: topicMeta.slapText,
+                        }}
+                      >
+                        {safeImg ? (
+                          <img
+                            src={safeImg}
+                            alt={ev.imageAlt}
+                            title={ev.attribution.badgeText}
+                            width="80"
+                            height="80"
+                            loading={index < 6 ? 'eager' : 'lazy'}
+                            className="w-full h-full object-cover contrast-110"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center p-1.5 text-center">
+                            <span className="text-2xl leading-none select-none">
+                              {ev.categoryEmoji}
                             </span>
-                          ) : ev.priceStatus === 'paid' ? (
+                            <span className="mt-1 font-display-slap text-[11px] uppercase tracking-tighter leading-none">
+                              {ev.categoryLabel.split(' ')[0]}
+                            </span>
+                          </div>
+                        )}
+
+                        {ev.isLiveNow ? (
+                          <span className="absolute bottom-0 inset-x-0 bg-[#ff2a85] text-[#0d0e11] font-mono-stamp text-[11px] font-bold uppercase text-center leading-tight flex items-center justify-center gap-0.5">
+                            <Flame aria-hidden="true" className="w-2.5 h-2.5" />
+                            LIVE
+                          </span>
+                        ) : ev.isOngoingLongSpan ? (
+                          <span className="absolute bottom-0 inset-x-0 bg-[#121418]/90 text-[#ffe600] font-mono-stamp text-[11px] font-bold uppercase text-center leading-tight">
+                            ON NOW
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {/* Minimal, High-Impact Flyer Copy */}
+                      <div className="flex-1 min-w-0 pr-7 flex flex-col justify-between">
+                        <div>
+                          {/* Tilted Category + Honest Price Stamp (`DATA-05`, `A11Y-04`) */}
+                          <div className="flex items-center gap-1.5 flex-wrap mb-1">
                             <span
-                              className={`px-1.5 py-[1px] rounded-xs font-mono-stamp text-[9px] font-bold rotate-1 border ${
+                              className="px-1.5 py-[1px] rounded-xs font-display-slap text-[11px] uppercase tracking-tight border border-[#0d0e11] -rotate-1"
+                              style={{
+                                backgroundColor: topicMeta.slapBg,
+                                color: topicMeta.slapText,
+                              }}
+                            >
+                              {ev.categoryEmoji}{' '}
+                              {ev.categoryLabel.split(' ')[0]}
+                            </span>
+
+                            {ev.priceStatus === 'free' ? (
+                              <span className="px-1.5 py-[1px] rounded-xs bg-[#22c55e] text-[#0d0e11] border border-[#0d0e11] font-mono-stamp text-[11px] font-bold uppercase rotate-1">
+                                FREE
+                              </span>
+                            ) : ev.priceStatus === 'paid' ? (
+                              <span
+                                className={`px-1.5 py-[1px] rounded-xs font-mono-stamp text-[11px] font-bold rotate-1 border ${
+                                  isPaperVariant
+                                    ? 'bg-[#0d0e11] text-[#ffe600] border-[#0d0e11]'
+                                    : 'bg-[#262b33] text-[#ffe600] border-white/25'
+                                }`}
+                              >
+                                {ev.priceText}
+                              </span>
+                            ) : (
+                              <span
+                                className={`px-1.5 py-[1px] rounded-xs font-mono-stamp text-[11px] rotate-1 border ${
+                                  isPaperVariant
+                                    ? 'bg-[#e2ded3] text-[#334155] border-[#0d0e11]/35'
+                                    : 'bg-[#1f242c] text-[#c7c4b8] border-white/20'
+                                }`}
+                              >
+                                {ev.priceText || 'Price not provided'}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Title with stretched primary button (`A11Y-01` Modern Web Guidance `card` pattern) */}
+                          <h3
+                            className={`text-sm font-extrabold line-clamp-2 leading-snug ${
+                              isPaperVariant
+                                ? 'text-[#0d0e11]'
+                                : 'text-[#f6f3ec]'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => onPlayStory(ev)}
+                              aria-label={`Open event flyer for ${ev.title} at ${ev.venueName}`}
+                              className="card-primary-btn text-left cursor-pointer"
+                            >
+                              {ev.title}
+                            </button>
+                          </h3>
+                        </div>
+
+                        {/* Hand-stamped Venue + Honest Distance/Location line */}
+                        <div className="mt-2 flex items-center justify-between gap-2 font-mono-stamp text-[11px]">
+                          <span
+                            className={`truncate font-bold uppercase ${
+                              isPaperVariant
+                                ? 'text-[#1f232a]'
+                                : 'text-[#d5d2c8]'
+                            }`}
+                          >
+                            {ev.venueName}
+                          </span>
+
+                          {ev.distanceKm !== null ? (
+                            <span
+                              className={`shrink-0 font-bold flex items-center gap-1 ${
                                 isPaperVariant
-                                  ? 'bg-[#0d0e11] text-[#ffe600] border-[#0d0e11]'
-                                  : 'bg-[#262b33] text-[#ffe600] border-white/20'
+                                  ? 'text-[#0d0e11] bg-[#ffe600] px-1.5 py-[1px] border border-[#0d0e11]'
+                                  : 'text-[#ffe600]'
                               }`}
                             >
-                              {ev.priceText}
+                              <MapPin
+                                aria-hidden="true"
+                                className="w-3 h-3"
+                              />
+                              {formatDistance(ev.distanceKm)}
                             </span>
                           ) : (
                             <span
-                              className={`px-1.5 py-[1px] rounded-xs font-mono-stamp text-[9px] rotate-1 border ${
+                              className={`shrink-0 font-bold flex items-center gap-1 ${
                                 isPaperVariant
-                                  ? 'bg-[#e2ded3] text-[#334155] border-[#0d0e11]/30'
-                                  : 'bg-[#1f242c] text-[#9e9a8e] border-white/15'
+                                  ? 'text-[#334155]'
+                                  : 'text-[#b8b4a8]'
                               }`}
                             >
-                              Price unknown
+                              {ev.isOnline ? (
+                                <>
+                                  <Globe
+                                    aria-hidden="true"
+                                    className="w-3 h-3"
+                                  />
+                                  <span>Online</span>
+                                </>
+                              ) : (
+                                <span>No map pin</span>
+                              )}
                             </span>
                           )}
                         </div>
 
-                        {/* Title */}
-                        <h3
-                          className={`text-sm font-extrabold line-clamp-2 leading-snug ${
-                            isPaperVariant ? 'text-[#0d0e11]' : 'text-[#f6f3ec]'
+                        <div
+                          className={`font-mono-stamp text-[11px] font-bold ${
+                            isPaperVariant
+                              ? 'text-[#334155]'
+                              : 'text-[#c7c4b8]'
                           }`}
                         >
-                          {ev.title}
-                        </h3>
-                      </div>
-
-                      {/* Hand-stamped Venue + Time + Honest Distance/Location line (Finding 07) */}
-                      <div className="mt-2 flex items-center justify-between gap-2 font-mono-stamp text-[10px]">
-                        <span
-                          className={`truncate font-bold uppercase ${
-                            isPaperVariant ? 'text-[#1f232a]' : 'text-[#d5d2c8]'
-                          }`}
-                        >
-                          {ev.venueName}
-                        </span>
-
-                        {ev.distanceKm !== null ? (
-                          <span
-                            className={`shrink-0 font-bold flex items-center gap-1 ${
-                              isPaperVariant
-                                ? 'text-[#0d0e11] bg-[#ffe600] px-1.5 py-[1px] border border-[#0d0e11]'
-                                : 'text-[#ffe600]'
-                            }`}
-                          >
-                            <MapPin aria-hidden="true" className="w-2.5 h-2.5" />
-                            {formatDistance(ev.distanceKm)}
-                          </span>
-                        ) : (
-                          <span
-                            className={`shrink-0 font-bold flex items-center gap-1 ${
-                              isPaperVariant
-                                ? 'text-[#475569]'
-                                : 'text-[#9e9a8e]'
-                            }`}
-                          >
-                            {ev.isOnline ? (
-                              <>
-                                <Globe
-                                  aria-hidden="true"
-                                  className="w-2.5 h-2.5"
-                                />
-                                <span>Online</span>
-                              </>
-                            ) : (
-                              <span>No map pin</span>
-                            )}
-                          </span>
-                        )}
-                      </div>
-
-                      <div
-                        className={`font-mono-stamp text-[11px] font-bold ${
-                          isPaperVariant ? 'text-[#334155]' : 'text-[#b8b4a8]'
-                        }`}
-                      >
-                        {dateFmt.format(ev.startTime)} •{' '}
-                        {timeFmt.format(ev.startTime)}
-                        {ev.occurrenceDates.length > 1 && (
-                          <span className="ml-1.5 text-[9px] opacity-80">
-                            ({ev.occurrenceDates.length} dates)
-                          </span>
-                        )}
+                          {scheduleLabel}
+                          {ev.occurrenceDates.length > 1 && (
+                            <span className="ml-1.5 text-[11px]">
+                              ({ev.occurrenceDates.length} dates)
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            {hasMoreCards && (
+              <div
+                ref={sentinelRef}
+                className="mt-6 flex flex-col items-center justify-center gap-2"
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPaginationState((prev) => {
+                      const current =
+                        prev.key === paginationKey
+                          ? prev.count
+                          : INITIAL_VISIBLE_CARDS;
+                      return {
+                        key: paginationKey,
+                        count: Math.min(
+                          sortedEvents.length,
+                          current + VISIBLE_CARDS_STEP
+                        ),
+                      };
+                    })
+                  }
+                  style={
+                    {
+                      '--slap-rot': '-1.4deg',
+                      '--slap-radius': '10px 4px 12px 5px',
+                    } as React.CSSProperties
+                  }
+                  className="organic-slap-btn px-4 py-2 bg-[#ffe600] hover:bg-[#fff04d] text-[#0d0e11] border-2 border-[#0d0e11] font-display-slap text-xs uppercase cursor-pointer focus-visible:outline-2 focus-visible:outline-[#f4f1ea] focus-visible:outline-offset-2"
+                >
+                  Show more stickers ({sortedEvents.length - visibleCount}{' '}
+                  remaining)
+                </button>
+              </div>
+            )}
+          </>
         )}
 
-        {/* Feed Coverage & Freshness Footer (Finding 20) */}
+        {/* Feed Coverage & Freshness Footer */}
         {(loadedCount !== undefined || coverageStart) && (
-          <div className="mt-8 text-center font-mono-stamp text-[10px] text-[#b8b4a8]/80 space-y-0.5">
+          <div className="mt-8 text-center font-mono-stamp text-[11px] text-[#c7c4b8] space-y-0.5">
             <p>
-              Showing {sortedEvents.length} matching of {loadedCount ?? events.length}{' '}
-              loaded events
+              Showing {visibleEvents.length} of {sortedEvents.length} matching (
+              {loadedCount ?? events.length} loaded events
               {totalUpstream && totalUpstream > (loadedCount ?? events.length)
-                ? ` (snapshot from ${totalUpstream} upstream records)`
+                ? `, snapshot from ${totalUpstream} upstream records`
                 : ''}
+              )
               {coverageStart && coverageEnd
                 ? ` • Coverage: ${coverageStart} – ${coverageEnd}`
                 : ''}
             </p>
-            {generatedAt && (
-              <p>
-                Feed snapshot updated:{' '}
-                {new Date(generatedAt).toLocaleString('en-GB', {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </p>
+            {formattedGeneratedDateTime && (
+              <p>Feed snapshot updated: {formattedGeneratedDateTime}</p>
             )}
           </div>
         )}

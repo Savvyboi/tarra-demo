@@ -12,6 +12,50 @@ function boxesOverlap(
   );
 }
 
+test('Map base layer finishes loading (MapLibre worker ships with the build)', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(msg.text());
+  });
+
+  await page.goto('/?city=turku');
+
+  // `data-map-ready` flips to "true" on MapLibre's `load` event, which needs the worker
+  // to start and the style and first tiles to arrive. Markers alone do not prove this.
+  await expect(page.locator('[data-map-ready="true"]')).toHaveCount(1, {
+    timeout: 30_000,
+  });
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(errors.filter((e) => /worker/i.test(e))).toEqual([]);
+});
+
+test('BUG-10: A map that never loads shows the error banner, and Retry rebuilds it', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+
+  // Break the worker so MapLibre cannot start. This failure never reaches the map's
+  // own `error` event, so only the load timeout can surface it.
+  const blockWorker = (route: { abort: () => Promise<void> }) => route.abort();
+  await page.route('**/maplibre-gl-worker*', blockWorker);
+  await page.goto('/?city=turku');
+
+  const banner = page.getByRole('alert').filter({ hasText: /street map/i });
+  await expect(banner).toBeVisible({ timeout: 25_000 });
+  await expect(page.locator('[data-map-ready="true"]')).toHaveCount(0);
+
+  await page.unroute('**/maplibre-gl-worker*', blockWorker);
+  await banner.getByRole('button', { name: 'Retry Map' }).click();
+
+  await expect(page.locator('[data-map-ready="true"]')).toHaveCount(1, {
+    timeout: 30_000,
+  });
+  await expect(banner).toHaveCount(0);
+});
+
 test('BUG-01: Opening a flyer and its Details drawer survives a 70s clock advance without resetting', async ({
   page,
 }) => {
@@ -143,10 +187,30 @@ test('UI-01 & UI-04: Mobile 375x812 viewport has zero overlapped chrome controls
     expect(boxesOverlap(cityNavBox, dockBox)).toBe(false);
   }
 
+  // The bottom dock must not cover the list view's data credit
+  await page.keyboard.press('Escape');
+  const footerBox = await page.locator('footer').boundingBox();
+  expect(footerBox).not.toBeNull();
+  if (footerBox && dockBox) {
+    expect(boxesOverlap(footerBox, dockBox)).toBe(false);
+  }
+
   // Switch to map view and verify custom list footer is hidden so only MapLibre attribution shows
   await page.goto('/?city=turku');
-  await expect(page.locator('.maplibregl-ctrl-attrib')).toHaveCount(1);
+  const attrib = page.locator('.maplibregl-ctrl-attrib');
+  await expect(attrib).toHaveCount(1);
   await expect(page.locator('footer')).toHaveCount(0);
+
+  // ...and the dock must not cover the map's attribution either
+  const attribBox = await attrib.boundingBox();
+  const mapDockBox = await page
+    .getByRole('complementary', { name: 'Map and Pole quick actions' })
+    .boundingBox();
+  expect(attribBox).not.toBeNull();
+  expect(mapDockBox).not.toBeNull();
+  if (attribBox && mapDockBox) {
+    expect(boxesOverlap(attribBox, mapDockBox)).toBe(false);
+  }
 });
 
 test('BUG-02 & BUG-03: Helsinki calendar has upcoming counts next week and Weekend filter yields events', async ({

@@ -8,7 +8,8 @@ export default defineConfig({
     timeout: 10_000,
   },
   fullyParallel: true,
-  retries: 0,
+  // Several checks hit live tile and event servers, so allow one retry in CI
+  retries: process.env.CI ? 1 : 0,
   reporter: 'list',
   use: {
     baseURL: 'http://127.0.0.1:4173',

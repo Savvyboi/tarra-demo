@@ -283,7 +283,7 @@ export const EventListView: React.FC<EventListViewProps> = ({
     <main
       aria-label={`${cityMeta.name} Pole Sticker Feed`}
       aria-busy={loading}
-      className="relative w-full h-full overflow-y-auto overflow-x-hidden street-box-bg px-3.5 sm:pl-6 sm:pr-20 lg:px-6 pt-16 pb-28 sm:pb-20"
+      className="relative w-full h-full overflow-y-auto overflow-x-hidden street-box-bg px-3.5 sm:pl-6 sm:pr-20 lg:px-6 pt-16 pb-40 sm:pb-20"
     >
       {/* Continuous Vertical Galvanized Steel Pole Spine running behind the stickers */}
       <div

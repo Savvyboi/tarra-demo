@@ -1540,9 +1540,10 @@ export const App: React.FC = () => {
       )}
 
       {/* =====================================================================
-          FLOATING STATUS / ERROR BANNERS (Above mobile dock on <sm)
+          FLOATING STATUS / ERROR BANNERS (Above mobile dock on <sm; the dock itself
+          sits above the 2-3 line data credit at the very bottom, `UI-04`)
           ===================================================================== */}
-      <div className="pointer-events-none fixed bottom-24 sm:bottom-8 left-1/2 -translate-x-1/2 z-35 flex flex-col items-center gap-2 max-w-[92vw] sm:max-w-md">
+      <div className="pointer-events-none fixed bottom-34 sm:bottom-8 left-1/2 -translate-x-1/2 z-35 flex flex-col items-center gap-2 max-w-[92vw] sm:max-w-md">
         {viewMode === 'map' && loading && (
           <div
             role="status"
@@ -2006,7 +2007,7 @@ export const App: React.FC = () => {
           ===================================================================== */}
       <aside
         aria-label="Map and Pole quick actions"
-        className={`pointer-events-none fixed bottom-9 inset-x-0 mx-auto w-fit sm:inset-x-auto sm:mx-0 sm:bottom-auto sm:top-3 sm:right-3 ${
+        className={`pointer-events-none fixed bottom-16 inset-x-0 mx-auto w-fit sm:inset-x-auto sm:mx-0 sm:bottom-auto sm:top-3 sm:right-3 ${
           moreToolsOpen ? 'z-50' : 'z-30'
         } flex flex-row sm:flex-col items-center gap-2`}
       >

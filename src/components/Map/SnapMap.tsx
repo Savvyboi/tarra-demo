@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+// MapLibre 6 looks for its worker next to its own module file at runtime, a path
+// Vite cannot see, so the worker never reaches the build. Import it as an asset
+// URL so Vite emits it, and point MapLibre at it explicitly.
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import Supercluster from 'supercluster';
 import { AlertTriangle, LayoutList, RefreshCw } from 'lucide-react';
 import { CITIES } from '../../config/cities';
@@ -10,6 +14,8 @@ import {
   VenueStoryGroup,
 } from '../../types/linkedEvents';
 import { getCitySourceAttribution } from '../../utils/licenseGuard';
+
+maplibregl.setWorkerUrl(new URL(maplibreWorkerUrl, window.location.href).href);
 
 export interface SnapMapProps {
   activeCity: CityId;
@@ -58,6 +64,10 @@ interface ManagedMarkerEntry {
   venueGroup?: VenueStoryGroup;
   renderSig: string;
 }
+
+// If the base map has not finished loading by then, show the tile error banner. Some failures
+// (for example a worker that cannot start) never reach the map's own `error` event.
+const MAP_LOAD_TIMEOUT_MS = 15_000;
 
 // Distinct OpenFreeMap styles (`UI-05`): Street (`liberty`), Midnight (`dark`), Daylight (`positron`)
 export const STYLE_URLS: Record<MapStyleId, string> = {
@@ -214,11 +224,17 @@ export const SnapMap: React.FC<SnapMapProps> = ({
   const mapStyleRef = useRef<MapStyleId>(mapStyle);
   const onSelectVenueGroupRef = useRef(onSelectVenueGroup);
   const onMapErrorRef = useRef(onMapError);
-  const initialConfigRef = useRef({
+  // Latest camera inputs, so a map rebuilt by "Retry" opens on the current city and style
+  const latestViewRef = useRef({
     activeCity,
     focusCoordinates,
     mapStyle,
   });
+  const hasLoadedRef = useRef(false);
+
+  useEffect(() => {
+    latestViewRef.current = { activeCity, focusCoordinates, mapStyle };
+  }, [activeCity, focusCoordinates, mapStyle]);
 
   useEffect(() => {
     mapStyleRef.current = mapStyle;
@@ -240,6 +256,8 @@ export const SnapMap: React.FC<SnapMapProps> = ({
   );
   const [tileError, setTileError] = useState<string | null>(null);
   const [viewTick, setViewTick] = useState(0);
+  // Bumped by "Retry" when the map never loaded, to tear it down and build a fresh one
+  const [mapInstanceKey, setMapInstanceKey] = useState(0);
 
   useEffect(() => {
     if (mapError) {
@@ -277,7 +295,8 @@ export const SnapMap: React.FC<SnapMapProps> = ({
       activeCity: initCityId,
       focusCoordinates: initFocus,
       mapStyle: initStyle,
-    } = initialConfigRef.current;
+    } = latestViewRef.current;
+    hasLoadedRef.current = false;
     const initialCity = CITIES[initCityId];
     const startCenter = initFocus || initialCity.coordinates;
     const startZoom = initFocus ? 15.2 : initialCity.defaultZoom;
@@ -306,7 +325,16 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     }
 
     const handleMove = () => setViewTick((t) => t + 1);
+    const loadWatchdog = window.setTimeout(() => {
+      if (!hasLoadedRef.current) {
+        setTileError(
+          'The street map is taking too long to load (network or tile server problem). Event pins remain interactive.'
+        );
+      }
+    }, MAP_LOAD_TIMEOUT_MS);
     map.on('load', () => {
+      hasLoadedRef.current = true;
+      window.clearTimeout(loadWatchdog);
       setMapReady(true);
       setTileError(null);
       syncCustomLayers(map);
@@ -361,6 +389,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     const markersMap = markersMapRef.current;
 
     return () => {
+      window.clearTimeout(loadWatchdog);
       canvas?.removeEventListener('webglcontextlost', handleContextLost);
       for (const entry of markersMap.values()) {
         entry.marker.remove();
@@ -374,7 +403,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
       }
       mapRef.current = null;
     };
-  }, [mapError, syncCustomLayers]);
+  }, [mapError, syncCustomLayers, mapInstanceKey]);
 
   // Single unified MapLibre AttributionControl including active city data credit (`UI-04`)
   useEffect(() => {
@@ -398,7 +427,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
     });
     map.addControl(ctrl, 'bottom-left');
     attributionCtrlRef.current = ctrl;
-  }, [activeCity, mapReady]);
+  }, [activeCity, mapReady, mapInstanceKey]);
 
   // Resize canvas cleanly when revealed from hidden state (`PERF-05`)
   useEffect(() => {
@@ -490,7 +519,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
         essential: true,
       });
     }
-  }, [userLocation]);
+  }, [userLocation, mapInstanceKey]);
 
   // Build Supercluster index via useMemo (`PERF-05`, zero extra render cascades)
   const supercluster = useMemo(() => {
@@ -729,8 +758,11 @@ export const SnapMap: React.FC<SnapMapProps> = ({
   const handleRetryMapTiles = useCallback(() => {
     setTileError(null);
     const map = mapRef.current;
-    if (map) {
+    if (map && hasLoadedRef.current) {
       map.setStyle(STYLE_URLS[mapStyleRef.current]);
+    } else {
+      // The map never finished loading, so reloading the style is not enough: rebuild it
+      setMapInstanceKey((k) => k + 1);
     }
   }, []);
 
@@ -771,6 +803,7 @@ export const SnapMap: React.FC<SnapMapProps> = ({
         ref={containerRef}
         className="w-full h-full"
         aria-label="Interactive Finnish Street Sticker Map"
+        data-map-ready={mapReady ? 'true' : 'false'}
       />
 
       {tileError && (

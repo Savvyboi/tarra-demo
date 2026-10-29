@@ -58,6 +58,17 @@ jobs:
           VITE_BASE_PATH: './'
         run: npm run build
 
+      # Browser smoke tests against the production build (map actually loads, flyer
+      # Details survives the clock tick, mobile layout has no overlaps). Skipped on the
+      # scheduled feed refresh, where the code has not changed.
+      - name: Install Playwright Chromium
+        if: github.event_name != 'schedule'
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E smoke tests
+        if: github.event_name != 'schedule'
+        run: npm run test:e2e
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
